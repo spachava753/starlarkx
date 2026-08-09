@@ -38,6 +38,8 @@ languages and compilers.
 
 * Language definition: [doc/spec.md](doc/spec.md)
 
+* Python compatibility baseline: [doc/python-compatibility.md](doc/python-compatibility.md)
+
 * About the Go implementation: [doc/impl.md](doc/impl.md)
 
 * API documentation: [pkg.go.dev/go.starlark.net/starlark](https://pkg.go.dev/go.starlark.net/starlark)
