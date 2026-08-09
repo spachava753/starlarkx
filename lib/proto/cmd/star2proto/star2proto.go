@@ -82,7 +82,7 @@ func main() {
 
 	// Execute the Starlark file.
 	thread := &starlark.Thread{
-		Print: func(_ *starlark.Thread, msg string) { fmt.Println(msg) },
+		Print: func(_ *starlark.Thread, text string) { fmt.Print(text) },
 	}
 	starlarkproto.SetPool(thread, pool)
 	predeclared := starlark.StringDict{

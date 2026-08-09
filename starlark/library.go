@@ -796,8 +796,8 @@ func ord(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#print
 func print(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	sep := " "
-	if err := UnpackArgs("print", nil, kwargs, "sep?", &sep); err != nil {
+	sep, end := " ", "\n"
+	if err := UnpackArgs("print", nil, kwargs, "sep??", &sep, "end??", &end); err != nil {
 		return nil, err
 	}
 	buf := new(strings.Builder)
@@ -807,18 +807,17 @@ func print(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 		}
 		if s, ok := AsString(v); ok {
 			buf.WriteString(s)
-		} else if b, ok := v.(Bytes); ok {
-			buf.WriteString(string(b))
 		} else {
 			writeValue(buf, v, nil)
 		}
 	}
+	buf.WriteString(end)
 
-	s := buf.String()
+	text := buf.String()
 	if thread.Print != nil {
-		thread.Print(thread, s)
+		thread.Print(thread, text)
 	} else {
-		fmt.Fprintln(os.Stderr, s)
+		fmt.Fprint(os.Stderr, text)
 	}
 	return None, nil
 }
@@ -1098,9 +1097,6 @@ func str(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	switch x := args[0].(type) {
 	case String:
 		return x, nil
-	case Bytes:
-		// Invalid encodings are replaced by that of U+FFFD.
-		return String(utf8Transcode(string(x))), nil
 	default:
 		return String(x.String()), nil
 	}

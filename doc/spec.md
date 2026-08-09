@@ -2162,7 +2162,7 @@ c       string          x (string must encode a single Unicode code point)
 It is an error if the argument does not have the type required by the
 conversion specifier. A Boolean argument is not considered a number. Because a
 bytes value is not a string, `%s` formats it using its representation, including
-the `b` prefix; this differs from `str(bytes_value)`.
+the `b` prefix, consistently with `str(bytes_value)`.
 
 Examples:
 
@@ -3312,23 +3312,25 @@ See also: `chr`.
 
 ### print
 
-`print(*args, sep=" ")` prints its arguments, followed by a newline.
-Arguments are formatted as if by `str(x)` and separated with a space,
-unless an alternative separator is specified by a `sep` named argument. A
-bytes argument is written as its raw byte sequence, without the `b` prefix and
-without UTF-8 replacement.
+`print(*args, sep=" ", end="\n")` formats its arguments, joins them with
+`sep`, appends `end`, and sends the complete text to the Starlark thread's print
+function. Arguments are formatted as if by `str(x)`. The `sep` and `end`
+parameters are keyword-only and must each be a string or `None`; `None` selects
+the respective default.
 
 Example:
 
 ```python
-print(1, "hi")		       		# "1 hi\n"
-print("hello", "world")			# "hello world\n"
-print("hello", "world", sep=", ")	# "hello, world\n"
+print(1, "hi")                         # "1 hi\n"
+print("hello", "world", sep=", ")      # "hello, world\n"
+print("hello", end="!")                # "hello!"
+print("hello", "world", sep=None)      # "hello world\n"
 ```
 
-Typically the formatted string is printed to the standard error file,
-but the exact behavior is a property of the Starlark thread and is
-determined by the host application.
+Typically the complete formatted text, including `end`, is printed to the
+standard error file, but the exact behavior is a property of the Starlark
+thread and is determined by the host application. Python's `file` and `flush`
+parameters are not supported.
 
 ### range
 
@@ -3441,14 +3443,16 @@ sorted(["two", "three", "four"], key=len, reverse=True)         # ["three", "fou
 
 `str(x)` formats its argument as a string.
 
-If x is a string, the result is x (without quotation). If x is bytes, the raw
-bytes are UTF-8-decoded into a string, replacing each invalid byte with U+FFFD.
-For other values, nested strings in the representation are double-quoted.
+If x is a string, the result is x (without quotation). If x is bytes, the
+result is the same stable bytes representation returned by `repr(x)`; no text
+decoding is performed. For other values, nested strings in the representation
+are double-quoted.
 
 ```python
 str(1)                          # '1'
 str("x")                        # 'x'
-str(b"x")                       # 'x'
+str(b"x")                       # 'b"x"'
+str(b"\xff")                    # 'b"\\xff"'
 str([1, "x"])                   # '[1, "x"]'
 ```
 
@@ -4068,8 +4072,8 @@ the explicit and implicit forms may not be mixed.
 The *conversion* specifies how to convert an argument value `x` to a
 string. It may be either `!r`, which uses `repr(x)`, or `!s`, which emits a
 string argument without quotes and otherwise also uses `repr(x)`. The latter is
-the default. Consequently, bytes retain their `b` prefix for all three forms;
-this differs from `str(bytes_value)`.
+the default. Consequently, bytes retain their `b` prefix for all three forms,
+consistently with `str(bytes_value)`.
 
 The *format specifier*, after a colon, specifies field width,
 alignment, padding, and numeric precision.

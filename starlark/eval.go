@@ -34,9 +34,9 @@ type Thread struct {
 	stack []*frame
 
 	// Print is the client-supplied implementation of the Starlark
-	// 'print' function. If nil, fmt.Fprintln(os.Stderr, msg) is
-	// used instead.
-	Print func(thread *Thread, msg string)
+	// 'print' function. The text includes the separator and terminator.
+	// If nil, fmt.Fprint(os.Stderr, text) is used instead.
+	Print func(thread *Thread, text string)
 
 	// Load is the client-supplied implementation of module loading.
 	// Repeated calls with the same module name must return the same

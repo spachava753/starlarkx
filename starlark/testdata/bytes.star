@@ -45,14 +45,13 @@ assert.true(hello)
 assert.true(goodbye)
 assert.true(not empty)
 
-# str(bytes) does UTF-8 to UTF-k transcoding.
-# TODO(adonovan): specify.
-assert.eq(str(hello), "hello, 世界")
-assert.eq(str(hello[:-1]), "hello, 世��")  # incomplete UTF-8 encoding => U+FFFD
-assert.eq(str(goodbye), "goodbye")
-assert.eq(str(empty), "")
-assert.eq(str(nonprinting), "\t\n\x7f\u200d")
-assert.eq(str(b"\xED\xB0\x80"), "���") # UTF-8 encoding of unpaired surrogate => U+FFFD x 3
+# str(bytes) returns the bytes representation without decoding.
+assert.eq(str(hello), r'b"hello, 世界"')
+assert.eq(str(hello[:-1]), r'b"hello, 世\xe7\x95"')
+assert.eq(str(goodbye), 'b"goodbye"')
+assert.eq(str(empty), 'b""')
+assert.eq(str(nonprinting), 'b"\\t\\n\\x7f\\u200d"')
+assert.eq(str(b"\xED\xB0\x80"), r'b"\xed\xb0\x80"')
 
 # repr
 assert.eq(repr(hello), r'b"hello, 世界"')

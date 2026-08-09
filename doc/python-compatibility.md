@@ -93,7 +93,8 @@ before resolving any of them.
 | Values / Bytes construction | `OPEN` | - | - | - | - |
 | Values / Bytes literals | `OPEN` | - | - | - | - |
 | Values / Bytes indexing/iteration | `OPEN` | - | - | - | - |
-| Values / Bytes/text conversion | `OPEN` | - | - | - | - |
+| Values / One-argument `str(bytes)` | `PYTHON` | `DEFAULT` | `YES` | Return the same text as `repr(bytes)`, without implicitly decoding the byte sequence. | Match Python's object-to-string conversion while leaving exact representation spelling to the separate representations decision. |
+| Values / Other bytes/text conversion | `OPEN` | - | - | - | - |
 | Values / Float NaN | `OPEN` | - | - | - | - |
 | Values / Float overflow parsing | `OPEN` | - | - | - | - |
 | Values / Duplicate dictionary literals | `OPEN` | - | - | - | - |
@@ -114,7 +115,8 @@ before resolving any of them.
 | Calls / Built-in keyword support | `OPEN` | - | - | - | - |
 | Calls / `sorted` signature | `OPEN` | - | - | - | - |
 | Calls / `min`/`max` | `OPEN` | - | - | - | - |
-| Calls / `print` | `OPEN` | - | - | - | - |
+| Calls / `print` formatting | `PYTHON` | `DEFAULT` | `YES` | Convert each object with `str`, join with keyword-only `sep`, and append keyword-only `end`; accept `None` as the default for either option. | Match Python's textual formatting contract, including partial lines and custom terminators. |
+| Calls / `print` destination and flushing | `STARLARK` | `HOST` | `YES` | Deliver each complete formatted text fragment through `Thread.Print`, with standard error as the fallback; provide no `file` or `flush` parameters. | Keep output effects controlled by the embedding host rather than exposing Python's process I/O model. |
 | Calls / Percent formatting | `OPEN` | - | - | - | - |
 | Calls / `str.format` | `OPEN` | - | - | - | - |
 | Calls / Float parsing protocols | `OPEN` | - | - | - | - |
@@ -226,7 +228,8 @@ module definitions. They are not incidental parser gaps.
 | Bytes construction | `bytes(x)` requires exactly one string, bytes, or iterable-of-byte-integers argument. A string is UTF-8-transcoded directly. | `bytes()` also supports zero/size arguments; converting text requires an encoding and optional error policy. | Divergence / restriction |
 | Bytes literals | Go Starlark accepts non-ASCII source text and `\u`/`\U` escapes in `b"..."`, encoding them as UTF-8. | Python bytes literals permit only ASCII source characters and do not interpret Unicode escapes as code points. | Divergence |
 | Bytes indexing/iteration | `b[i]` returns a one-byte `bytes`; bytes are not directly iterable, and `.elems()` yields integer bytes. | `b[i]` returns an `int`, and bytes iterate directly as integers. | Divergence |
-| Bytes/text conversion | `str(bytes_value)` UTF-8-decodes with replacement; `bytes(string_value)` UTF-8-encodes/transcodes. | `str(bytes_value)` without an encoding returns the bytes representation, while encode/decode operations require explicit APIs or parameters. | Divergence |
+| One-argument `str(bytes)` | Returns the same stable Starlark bytes representation as `repr(bytes)`, including the `b` prefix and escaped non-text bytes. | Also returns the bytes representation; its exact quote selection differs as described under representations. | Aligned modulo representation spelling |
+| Other bytes/text conversion | `bytes(string_value)` UTF-8-encodes/transcodes, while `str` has no encoding or error-policy parameters and bytes expose no `decode` method. | Text-to-bytes and bytes-to-text conversion require an explicit encoding through constructor parameters or `encode`/`decode` methods. | Divergence / restriction |
 | Float NaN | This implementation imposes a total order: all NaNs compare equal and greater than `+inf`; distinct NaNs collapse to one dictionary key. | NaN is unequal to itself and all ordered comparisons with NaN are false; distinct NaN objects can coexist as dictionary keys. | Divergence |
 | Float overflow parsing | An overflowing float literal such as `1e1000` and `float("1e1000")` are errors. | Both evaluate to positive infinity on CPython. | Divergence |
 | Duplicate dictionary literals | Evaluating `{"a": 1, "a": 2}` is an error. | The last value wins. | Divergence |
@@ -252,9 +255,9 @@ module definitions. They are not incidental parser gaps.
 | Built-in keyword support | Unless documented otherwise, Starlark built-ins accept positional arguments only. Boolean parameters generally require an actual `bool`, not merely a truthy value. | Many Python built-ins have keyword-only parameters and commonly use truth testing where specified. | Restriction / divergence |
 | `sorted` signature | `key` and `reverse` may be passed positionally, and an explicit `None` is not accepted as the key. | Both options are keyword-only, and `None` is the default key. | Divergence |
 | `min`/`max` | Support `key`, but not Python's `default` argument for an empty iterable. | Support both `key` and `default`. | Restriction |
-| `print` | Supports only `sep`; output is delivered to the host's thread callback and may not be standard output. | Also supports `end`, `file`, and `flush`, with standard output as the default. | Divergence / restriction |
-| Percent formatting | Supports basic `%s`, `%r`, integer, float, character, and mapping conversions, but no flags, width, precision, or length modifiers. Booleans are not numbers, and `%s` formats bytes with their `b` representation rather than like `str(bytes)`. | Supports the fuller printf-style formatting surface and follows Python's bytes/text distinctions. | Restriction / divergence |
-| `str.format` | Supports positional/keyword replacement and `!s`/`!r`, but not attribute/index traversal, nested fields, or format specifications. Default and `!s` conversion format bytes with their `b` representation rather than like `str(bytes)`. | Supports the full format mini-language and Python conversion semantics. | Restriction / divergence |
+| `print` | Converts each object with `str`, joins with keyword-only `sep`, and appends keyword-only `end`; either formatting option accepts `None` for its default. The complete text is delivered to the host's thread callback, and `file` and `flush` are not supported. | Uses the same textual formatting options, additionally supports `file` and `flush`, and defaults to standard output. | Restriction / divergence |
+| Percent formatting | Supports basic `%s`, `%r`, integer, float, character, and mapping conversions, but no flags, width, precision, or length modifiers. Booleans are not numbers. | Supports the fuller printf-style formatting surface and follows Python's bytes/text distinctions. | Restriction / divergence |
+| `str.format` | Supports positional/keyword replacement and `!s`/`!r`, but not attribute/index traversal, nested fields, or format specifications. | Supports the full format mini-language and Python conversion semantics. | Restriction / divergence |
 | Float parsing protocols | `float` accepts only bool, int, float, or string and errors on overflow. | Also participates in Python's object conversion protocols and accepts infinity-producing overflow strings. | Restriction / divergence |
 | Extensibility | Only Go-defined values can add fields, methods, call behavior, truth, hashing, comparison, iteration, and operators. | Python code can implement these through classes and special methods. | Omission at language level |
 

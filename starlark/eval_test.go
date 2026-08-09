@@ -458,24 +458,31 @@ def j(a, b=42, *args, c, d=123, e, **kwargs):
 }
 
 // TestPrint ensures that the Starlark print function calls
-// Thread.Print, if provided.
+// Thread.Print, if provided, with the complete formatted text.
 func TestPrint(t *testing.T) {
 	const src = `
 print("hello")
-def f(): print("hello", "world", sep=", ")
+def f(): print("hello", "world", sep=", ", end="!")
 f()
+print(1, b"hi", [2, "x"], sep=None, end=None)
+print(b"\xff", end="")
+print(end=None)
 `
 	buf := new(bytes.Buffer)
-	print := func(thread *starlark.Thread, msg string) {
+	print := func(thread *starlark.Thread, text string) {
 		caller := thread.CallFrame(1)
-		fmt.Fprintf(buf, "%s: %s: %s\n", caller.Pos, caller.Name, msg)
+		fmt.Fprintf(buf, "%s: %s: %+q\n", caller.Pos, caller.Name, text)
 	}
 	thread := &starlark.Thread{Print: print}
 	if _, err := starlark.ExecFile(thread, "foo.star", src, nil); err != nil {
 		t.Fatal(err)
 	}
-	want := "foo.star:2:6: <toplevel>: hello\n" +
-		"foo.star:3:15: f: hello, world\n"
+	want := `foo.star:2:6: <toplevel>: "hello\n"
+foo.star:3:15: f: "hello, world!"
+foo.star:5:6: <toplevel>: "1 b\"hi\" [2, \"x\"]\n"
+foo.star:6:6: <toplevel>: "b\"\\xff\""
+foo.star:7:6: <toplevel>: "\n"
+`
 	if got := buf.String(); got != want {
 		t.Errorf("output was %s, want %s", got, want)
 	}

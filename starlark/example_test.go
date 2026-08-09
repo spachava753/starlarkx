@@ -42,7 +42,7 @@ squares = [x*x for x in range(10)]
 	// The Thread defines the behavior of the built-in 'print' function.
 	thread := &starlark.Thread{
 		Name:  "example",
-		Print: func(_ *starlark.Thread, msg string) { fmt.Println(msg) },
+		Print: func(_ *starlark.Thread, text string) { fmt.Print(text) },
 	}
 
 	// This dictionary defines the pre-declared environment.
@@ -266,7 +266,7 @@ func (c *cache) get(cc *cycleChecker, module string) (starlark.StringDict, error
 func (c *cache) doLoad(cc *cycleChecker, module string) (starlark.StringDict, error) {
 	thread := &starlark.Thread{
 		Name:  "exec " + module,
-		Print: func(_ *starlark.Thread, msg string) { fmt.Println(msg) },
+		Print: func(_ *starlark.Thread, text string) { fmt.Print(text) },
 		Load: func(_ *starlark.Thread, module string) (starlark.StringDict, error) {
 			// Tunnel the cycle-checker state for this "thread of loading".
 			return c.get(cc, module)
