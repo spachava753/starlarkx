@@ -145,7 +145,7 @@ x       index   starts_with     arg0
 ```
 
 *Literals*: literals are tokens that denote specific values.  Starlark
-has string, integer, and floating-point literals.
+has bytes, string, integer, and floating-point literals.
 
 ```text
 0                               # int
@@ -161,6 +161,10 @@ has string, integer, and floating-point literals.
 "hello"      'hello'            # string
 '''hello'''  """hello"""        # triple-quoted string
 r'hello'     r"hello"           # raw string literal
+
+b"hello"     b'hello'           # bytes
+b'''hello''' b"""hello"""       # triple-quoted bytes
+rb'hello'    rb"hello"          # raw bytes literal
 ```
 
 Integer and floating-point literal tokens are defined by the following grammar:
@@ -184,6 +188,9 @@ octal_digit   = '0' … '7' .
 hex_digit     = '0' … '9' | 'A' … 'F' | 'a' … 'f' .
 binary_digit  = '0' | '1' .
 ```
+
+It is a static error if a floating-point literal denotes a value whose
+magnitude is too large to be represented as a finite `float` value.
 
 ### String literals
 
@@ -244,36 +251,43 @@ allowing a long string to be split across multiple lines of the source file.
 def"			# "abcdef"
 ```
 
-An *octal escape* encodes a single byte using its octal value.
+An *octal escape* encodes a single string element using its octal value.
 It consists of a backslash followed by one, two, or three octal digits [0-7].
-It is error if the value is greater than decimal 255.
+Similarly, a *hex escape* encodes a single string element using its hexadecimal
+value. It consists of `\x` followed by exactly two hexadecimal digits
+[0-9A-Fa-f]. It is an error if the value of an octal or hexadecimal escape is
+greater than decimal 127.
 
 ```python
-'\0'			# "\x00"  a string containing a single NUL byte
-'\12'			# "\n"    octal 12 = decimal 10
-'\101-\132'		# "A-Z"
-'\119'			# "\t9"   = "\11" + "9"
+'\0'                    # "\x00", a string containing a single NUL element
+'\12'                   # "\n", octal 12 = decimal 10
+'\101-\132'             # "A-Z"
+'\119'                  # "\t9" = "\11" + "9"
+
+"\x00"                  # a string containing a single NUL element
+"\x41-\x5A"             # "A-Z"
 ```
 
-<b>Implementation note:</b>
-The Java implementation encodes strings using UTF-16,
-so an octal escape encodes a single UTF-16 code unit.
-Octal escapes for values above 127 are therefore not portable across implementations.
-There is little reason to use octal escapes in new code.
-
-A *hex escape* encodes a single byte using its hexadecimal value.
-It consists of `\x` followed by exactly two hexadecimal digits [0-9A-Fa-f].
+A *Unicode escape* denotes the UTF-8 encoding of a single valid Unicode code
+point. The `\uXXXX` form has exactly four hexadecimal digits, and the
+`\UXXXXXXXX` form has exactly eight. It is an error if the value lies in the
+surrogate range U+D800 to U+DFFF or is greater than U+10FFFF.
 
 ```python
-"\x00"			# "\x00"  a string containing a single NUL byte
-"(\x20)"		# "( )"   ASCII 0x20 = 32 = space
-
-red, reset = "\x1b[31m", "\x1b[0m"	# ANSI terminal control codes for color
-"(" + red + "hello" + reset + ")"	# "(hello)" with red text, if on a terminal
+'\u0041'                # "A"
+'\u0414'                # a Cyrillic capital letter, encoded as two bytes
+'\u754c'                # a CJK code point, encoded as three bytes
+'\U0001F600'            # an emoji code point, encoded as four bytes
 ```
 
-<b>Implementation note:</b>
-The Java implementation does not support hex escapes.
+Consequently, a non-ASCII code point may occupy more than one string element:
+
+```python
+len("A")                 # 1
+len("\u0414")            # 2
+len("\u754c")            # 3
+len("\U0001F600")        # 4
+```
 
 An ordinary string literal may not contain an unescaped newline,
 but a *multiline string literal* may spread over multiple source lines.
@@ -298,13 +312,12 @@ multiline string literal always denotes a line feed (\n).
 
 Starlark also supports *raw string literals*, which look like an
 ordinary single- or double-quotation preceded by `r`. Within a raw
-string literal, there is no special processing of backslash escapes,
-other than an escaped quotation mark (which denotes a literal
-quotation mark), or an escaped newline (which denotes a backslash
-followed by a newline). This form of quotation is typically used when
-writing strings that contain many quotation marks or backslashes (such
-as regular expressions or shell commands) to reduce the burden of
-escaping:
+string literal, a backslash has no special meaning and is retained in the
+value. During tokenization it prevents a following quotation mark from ending
+the literal and allows a newline to follow it; both the backslash and the
+following character are retained. This form of quotation is typically used
+when writing strings that contain many quotation marks or backslashes (such
+as regular expressions or shell commands) to reduce the burden of escaping:
 
 ```python
 "a\nb"		# "a\nb"  = 'a' + '\n' + 'b'
@@ -316,8 +329,38 @@ r"a\
 b"		# "a\\\nb"
 ```
 
-It is an error for a backslash to appear within a string literal other
+It is an error for a backslash to appear within a non-raw string literal other
 than as part of one of the escapes described above.
+
+### Bytes literals
+
+A Starlark bytes literal denotes a `bytes` value. It has the same quoted and
+triple-quoted forms as a string literal, preceded by the lowercase letter `b`.
+A raw bytes literal uses the lowercase prefix `rb`.
+
+```python
+b"abc"       b'abc'
+b"""abc"""   b'''abc'''
+rb"abc"      rb'abc'
+```
+
+The Go scanner does not accept the alternative `br` ordering or uppercase
+prefixes.
+
+Unescaped text within a bytes literal denotes its UTF-8 encoding. Bytes
+literals support the same escapes as strings, with these differences:
+
+* Octal and hexadecimal escapes may specify any byte from zero (`\000` or
+  `\x00`) through 255 (`\377` or `\xFF`).
+* A Unicode escape denotes the bytes of the UTF-8 encoding of the specified
+  code point.
+
+```python
+b"\012\xff\u0400" == b"\n\xff\xD0\x80"  # True
+```
+
+Any valid string literal that is also valid with a `b` prefix represents text
+whose UTF-8 encoding is the corresponding bytes value.
 
 TODO: define indent, outdent, semicolon, newline, eof
 
@@ -330,7 +373,8 @@ NoneType                     # the type of None
 bool                         # True or False
 int                          # a signed integer of arbitrary magnitude
 float                        # an IEEE 754 double-precision floating point number
-string                       # a byte string
+string                       # an immutable byte sequence, conventionally UTF-8 text
+bytes                        # an immutable sequence of binary bytes
 list                         # a modifiable sequence of values
 tuple                        # an unmodifiable sequence of values
 dict                         # a mapping from values to values
@@ -339,7 +383,7 @@ function                     # a function implemented in Starlark
 builtin_function_or_method   # a function or method implemented by the interpreter or host application
 ```
 
-Some functions, such as the iteration methods of `string`, or the
+Some functions, such as the iteration methods of `string` and `bytes`, or the
 `range` function, return instances of special-purpose types that don't
 appear in this list.
 Additional data types may be defined by the host application into
@@ -354,8 +398,8 @@ every value has a type string that can be obtained with the expression
 `type(x)`, and any value may be converted to a string using the
 expression `str(x)`, or to a Boolean truth value using the expression
 `bool(x)`.  Other operations apply only to certain types.  For
-example, the indexing operation `a[i]` works only with strings, lists,
-and tuples, and any application-defined types that are _indexable_.
+example, the indexing operation `a[i]` works only with strings, bytes, lists,
+tuples, ranges, and any application-defined types that are _indexable_.
 The [_value concepts_](#value-concepts) section explains the groupings of
 types by the operators they support.
 
@@ -377,12 +421,16 @@ truth or falsehood of a predicate.  The [type](#type) of a Boolean is `"bool"`.
 Boolean values are typically used as conditions in `if`-statements,
 although any Starlark value used as a condition is implicitly
 interpreted as a Boolean.
-For example, the values `None`, `0`, `0.0`, and the empty sequences
-`""`, `()`, `[]`, and `{}` have a truth value of `False`, whereas non-zero
-numbers and non-empty sequences have a truth value of `True`.
+For example, the values `None`, `False`, `0`, `0.0`, and the empty values
+`""`, `b""`, `()`, `[]`, `{}`, and `set()` have a truth value of `False`,
+whereas non-zero numbers and non-empty values have a truth value of `True`.
 Application-defined types determine their own truth value.
 Any value may be explicitly converted to a Boolean using the built-in `bool`
 function.
+
+Booleans are not numbers. They may be explicitly converted to 0 or 1 with
+`int` or to 0.0 or 1.0 with `float`, but arithmetic between a Boolean and a
+number is an error, and a Boolean is unequal to every non-Boolean value.
 
 ```python
 1 + 1 == 2                              # True
@@ -441,13 +489,14 @@ The Starlark floating-point data type represents an IEEE 754
 double-precision floating-point number.  Its [type](#type) is `"float"`.
 
 Arithmetic on floats using the `+`, `-`, `*`, `/`, `//`, and `%`
- operators follows the IEE 754 standard.
+operators follows the IEEE 754 standard.
 However, computing the division or remainder of division by zero is a dynamic error.
 
 An arithmetic operation applied to a mixture of `float` and `int`
 operands works as if the `int` operand is first converted to a
 `float`.  For example, `3.141 + 1` is equivalent to `3.141 +
-float(1)`.
+float(1)`. The conversion fails if the integer is too large to be represented
+as a finite `float`.
 There are two floating-point division operators:
 `x / y ` yields the floating-point quotient of `x` and `y`,
 whereas `x // y` yields `floor(x / y)`, that is, the largest
@@ -460,21 +509,22 @@ As with the corresponding operation on integers,
 if the signs of the operands differ, the sign of the remainder `x % y`
 matches that of the divisor, `y`.
 
-The infinite float values `+Inf` and `-Inf` represent numbers
-greater/less than all finite float values.
+All float values are totally ordered. The infinite values `+Inf` and `-Inf`
+are greater and less, respectively, than every finite float value.
 
-The non-finite `NaN` value represents the result of dubious operations
-such as `Inf/Inf`.  A NaN value compares neither less than, nor
-greater than, nor equal to any value, including itself.
+IEEE 754 defines many non-finite "not a number" (NaN) values. Starlark departs
+from IEEE comparison semantics by making all NaN values equal to each other and
+greater than every non-NaN float value. Thus NaN values can be sorted and two
+separately constructed NaNs denote equal dictionary keys.
 
-All floats other than NaN are totally ordered, so they may be compared
-using operators such as `==` and `<`.
+A comparison may mix `int` and `float` operands. Its result is mathematically
+exact even if neither operand can be represented exactly by the other type.
 
 Any bool, number, or string may be interpreted as a floating-point
 number by using the `float` built-in function.
 
-A float used in a Boolean context is considered true if it is
-non-zero.
+A float used in a Boolean context is considered true if it is not equal to
+`0.0` or `-0.0`; a NaN is therefore true.
 
 ```python
 1.23e45 * 1.23e45                               # 1.5129e+90
@@ -507,8 +557,8 @@ Strings are totally ordered lexicographically, so strings may be
 compared using operators such as `==` and `<`.
 
 Strings are _not_ iterable sequences, so they cannot be used as the operand of
-a `for`-loop, list comprehension, or any other operation than requires
-an iterable sequence.
+a `for`-loop, list comprehension, or any other operation that requires an
+iterable sequence.
 To obtain a view of a string as an iterable sequence of numeric byte
 values, 1-byte substrings, numeric Unicode code points, or 1-code
 point substrings, you must explicitly call one of its four methods:
@@ -569,6 +619,34 @@ intractible; see Google Issue b/36360490.
 The Java implementation does not consistently treat strings as
 iterable; see `testdata/string.star` in the test suite and Google Issue
 b/34385336 for further details.
+
+### Bytes
+
+A `bytes` value is an immutable sequence of byte values and can represent
+arbitrary binary data without loss. Its [type](#type) is `"bytes"`.
+
+The built-in `len` function returns the number of bytes. Two bytes values may
+be concatenated using `+`, and a bytes value may be repeated using `*` with an
+integer operand.
+
+Bytes values support indexing and slicing. Unlike Python, indexing returns a
+one-byte `bytes` value, not an integer. Slicing returns another `bytes` value.
+
+The comparison `x in b`, where `b` is a bytes value, accepts either form:
+
+* If `x` is a `bytes`, it tests whether `x` occurs as a consecutive subsequence.
+* If `x` is an integer from 0 through 255, it tests whether that byte occurs.
+
+Any other type, or an integer outside that range, is a dynamic error.
+
+Bytes values are hashable and totally ordered lexicographically by unsigned
+byte value. They are true if non-empty and false if empty. Like strings, they
+are not directly iterable. The `elems` method returns an iterable view of their
+integer byte values.
+
+A bytes value has one method:
+
+* [`elems`](#bytes·elems)
 
 ### Lists
 
@@ -690,10 +768,10 @@ The [type](#type) of a dictionary is `"dict"`.
 
 Dictionaries provide constant-time operations to insert an element, to
 look up the value for a key, or to remove an element.  Dictionaries
-are implemented using hash tables, so keys must be hashable.  Hashable
-values include `None`, Booleans, numbers, and strings, and tuples
-composed from hashable values.  Most mutable values, such as lists,
-dictionaries, and sets, are not hashable, even when frozen.
+are implemented using hash tables, so keys must be hashable. Hashable values
+include `None`, Booleans, numbers, strings, bytes, functions, and tuples
+composed from hashable values. Lists, dictionaries, sets, ranges, and iterable
+views are not hashable, even when frozen.
 Attempting to use a non-hashable value as a key in a dictionary
 results in a dynamic error.
 
@@ -815,12 +893,10 @@ Sets are iterable sequences, so they may be used as the operand of a
 Iteration yields the set's elements in the order in which they were
 inserted.
 
-The binary `|` and `&` operators compute union and intersection when
-applied to sets.  The right operand of the `|` operator may be any
-iterable value.  The binary `in` operator performs a set membership
-test when its right operand is a set.
-
-The binary `^` operator performs symmetric difference of two sets.
+The binary `|`, `&`, `^`, and `-` operators compute union, intersection,
+symmetric difference, and difference when both operands are sets. The binary
+`in` operator performs a set membership test when its right operand is a set.
+Methods such as `union` accept any iterable where documented.
 
 Sets are instantiated by calling the built-in `set` function, which
 returns a set containing all the elements of its optional argument,
@@ -844,9 +920,10 @@ A set has these methods:
 A set used in a Boolean context is considered true if it is non-empty.
 
 <b>Implementation note:</b>
-The Go implementation of Starlark requires the `-set` flag to
-enable support for sets.
-The Java implementation does not support sets.
+The `set` value is implemented and present in the universal environment used by
+the legacy API and command. A caller using explicit [`FileOptions`](../syntax/options.go)
+must set `Set: true`; the zero value rejects references to `set`. The command's
+`-set` flag is obsolete and has no effect.
 
 
 ### Functions
@@ -1026,13 +1103,11 @@ f(-1)           # returns 1 without printing
 ```
 
 <b>Implementation note:</b>
-The Go implementation of Starlark requires the `-recursion`
-flag to allow recursive functions.
+Recursive calls are allowed when `FileOptions.Recursion` is true. The legacy
+command exposes this option as `-recursion`.
 
-
-If the `-recursion` flag is not specified it is a dynamic error for a
-function to call itself or another function value with the same
-declaration.
+If recursion is not enabled, it is a dynamic error for a function to call
+itself or another function value with the same declaration.
 
 ```python
 def fib(x):
@@ -1044,8 +1119,8 @@ fib(5)
 ```
 
 This rule, combined with the invariant that all loops are iterations
-over finite sequences, implies that Starlark programs can not be
-Turing complete unless the `-recursion` flag is specified.
+over finite sequences, implies that Starlark programs cannot be
+Turing complete unless recursion or `while` loops are enabled.
 
 <!-- This rule is supposed to deter people from abusing Starlark for
      inappropriate uses, especially in the build system.
@@ -1256,8 +1331,9 @@ reference to `x` and a binding use of `x`, so it may not be used at
 top level.
 
 <b>Implementation note:</b>
-The Go implementation of Starlark permits augmented assignments to appear
-at top level if the `-globalreassign` flag is enabled.
+The Go implementation permits top-level augmented assignment when
+`FileOptions.GlobalReassign` is true. The legacy command's
+`-globalreassign` flag enables this option.
 
 A function may refer to variables defined in an enclosing function.
 In this example, the inner function `f` refers to a variable `x`
@@ -1311,7 +1387,7 @@ on the value returned by `get_filename()`.
 
 ## Value concepts
 
-Starlark has eleven core [data types](#data-types).  An application
+Starlark has twelve core [data types](#data-types).  An application
 that embeds the Starlark interpreter may define additional types that
 behave like Starlark values.  All values, whether core or
 application-defined, implement a few basic behaviors:
@@ -1330,8 +1406,8 @@ For example, an assignment statement updates the value held by a
 variable, and calls to some built-in functions such as `print` change
 the state of the application that embeds the interpreter.
 
-Values of some data types, such as `NoneType`, `bool`, `int`, `float`, and
-`string`, are _immutable_; they can never change.
+Values of some data types, such as `NoneType`, `bool`, `int`, `float`,
+`string`, and `bytes`, are _immutable_; they can never change.
 Immutable values have no notion of _identity_: it is impossible for a
 Starlark program to tell whether two integers, for instance, are
 represented by the same object; it can tell only whether they are
@@ -1404,7 +1480,7 @@ The hash of a value is an unspecified integer chosen so that two equal
 values have the same hash, in other words, `x == y => hash(x) == hash(y)`.
 A hashable value has the same hash throughout its lifetime.
 
-Values of the types `NoneType`, `bool`, `int`, `float`, and `string`,
+Values of the types `NoneType`, `bool`, `int`, `float`, `string`, and `bytes`,
 which are all immutable, are hashable.
 
 Values of mutable types such as `list`, `dict`, and `set` are not
@@ -1433,13 +1509,13 @@ Each is listed below using the name of its corresponding interface in
 the interpreter's Go API.
 
 * `Iterable`: an _iterable_ value lets us process each of its elements in a fixed order.
-  Examples: `dict`, `set`, `list`, `tuple`, but not `string`.
+  Examples: `dict`, `set`, `list`, `tuple`, and `range`, but not `string` or `bytes`.
 * `Sequence`: a _sequence of known length_ lets us know how many elements it
   contains without processing them.
-  Examples: `dict`, `set`, `list`, `tuple`, but not `string`.
+  Examples: `dict`, `set`, `list`, `tuple`, and `range`, but not `string` or `bytes`.
 * `Indexable`: an _indexed_ type has a fixed length and provides efficient
   random access to its elements, which are identified by integer indices.
-  Examples: `string`, `tuple`, and `list`.
+  Examples: `string`, `bytes`, `tuple`, `list`, and `range`.
 * `SetIndexable`: a _settable indexed type_ additionally allows us to modify the
   element at a given integer index. Example: `list`.
 * `Mapping`: a mapping is an association of keys to values. Example: `dict`.
@@ -1449,11 +1525,11 @@ least the `Sequence` contract, it's possible for an application
 that embeds the Starlark interpreter to define additional data types
 representing sequences of unknown length that implement only the `Iterable` contract.
 
-Strings are not iterable, though they do support the `len(s)` and
+Strings and bytes are not iterable, though they do support `len(s)` and
 `s[i]` operations. Starlark deviates from Python here to avoid a common
 pitfall in which a string is used by mistake where a list containing a
 single string was intended, resulting in its interpretation as a sequence
-of bytes.
+of elements.
 
 Most Starlark operators and built-in functions that need a sequence
 of values will accept any iterable.
@@ -1566,7 +1642,7 @@ PrimaryExpr = Operand
             .
 
 Operand = identifier
-        | int | float | string
+        | int | float | string | bytes
         | ListExpr | ListComp
         | DictExpr | DictComp
         | '(' [Expression] [,] ')'
@@ -1592,14 +1668,14 @@ Lookup of locals and globals may fail if not yet defined.
 
 ### Literals
 
-Starlark supports literals of three different kinds:
+Starlark supports literals of four different kinds:
 
 ```grammar {.good}
-Primary = int | float | string
+Primary = int | float | string | bytes
 ```
 
-Evaluation of a literal yields a value of the given type (string, int,
-or float) with the given value.
+Evaluation of a literal yields a value of the given type (`bytes`, `string`,
+`int`, or `float`) with the given value.
 See [Literals](#lexical-elements) for details.
 
 ### Parenthesized expressions
@@ -1672,9 +1748,10 @@ Examples:
 The key and value expressions are evaluated in left-to-right order.
 Evaluation fails if the same key is used multiple times.
 
-Only [hashable](#hashing) values may be used as the keys of a dictionary.
-This includes all built-in types except dictionaries, sets, and lists;
-a tuple is hashable only if its elements are hashable.
+Only [hashable](#hashing) values may be used as dictionary keys. Core hashable
+types are `NoneType`, `bool`, `int`, `float`, `string`, `bytes`, functions, and
+tuples whose elements are hashable. Lists, dictionaries, sets, ranges, and
+iterable views are not hashable.
 
 
 ### List expressions
@@ -1841,19 +1918,18 @@ the other is a `float`.  Of the built-in types, only the following
 support ordered comparison, using the ordering relation shown:
 
 ```shell
-NoneType        # None <= None
 bool            # False < True
 int             # mathematical
-float           # as defined by IEEE 754
-string          # lexicographical
+float           # -Inf < finite values < +Inf < NaN
+string          # lexicographical by byte value
+bytes           # lexicographical by unsigned byte value
 tuple           # lexicographical
 list            # lexicographical
 ```
 
-Comparison of floating point values follows the IEEE 754 standard,
-which breaks several mathematical identities.  For example, if `x` is
-a `NaN` value, the comparisons `x < y`, `x == y`, and `x > y` all
-yield false for all values of `y`.
+All NaN values compare equal to one another and greater than every non-NaN
+float value, as described under [Floating-point numbers](#floating-point-numbers).
+`None` supports equality but not ordered comparison.
 
 When used to compare two `set` objects, the `<=`, and `>=` operators will report
 whether one set is a subset or superset of another. Similarly, using `<` or `>` will
@@ -1888,16 +1964,19 @@ Arithmetic (int or float; result has type float unless both operands have type i
    number / number              # real division  (result is always a float)
    number // number             # floored division
    number % number              # remainder of floored division
-   number ^ number              # bitwise XOR
-   number << number             # bitwise left shift
-   number >> number             # bitwise right shift
+
+Bitwise integer operations
+      int ^ int                 # bitwise XOR
+      int << int                # bitwise left shift
+      int >> int                # bitwise right shift
 
 Concatenation
    string + string
+    bytes + bytes
      list + list
     tuple + tuple
 
-Repetition (string/list/tuple)
+Repetition (string/bytes/list/tuple)
       int * sequence
  sequence * int
 
@@ -1923,8 +2002,8 @@ The type of the result has type `int` only if both operands have that type.
 The result of real division `/` always has type `float`.
 
 The `+` operator may be applied to non-numeric operands of the same
-type, such as two lists, two tuples, or two strings, in which case it
-computes the concatenation of the two operands and yields a new value of
+type, such as two lists, two tuples, two strings, or two bytes values, in which
+case it computes the concatenation of the operands and yields a new value of
 the same type.
 
 ```python
@@ -1934,14 +2013,15 @@ the same type.
 ```
 
 The `*` operator may be applied to an integer _n_ and a value of type
-`string`, `list`, or `tuple`, in which case it yields a new value
-of the same sequence type consisting of _n_ repetitions of the original sequence.
+`string`, `bytes`, `list`, or `tuple`, in which case it yields a new value
+of the same sequence type consisting of _n_ repetitions of the original value.
 The order of the operands is immaterial.
 Negative values of _n_ behave like zero.
 
 ```python
 'mur' * 2               # 'murmur'
-3 * range(3)            # [0, 1, 2, 0, 1, 2, 0, 1, 2]
+3 * (0, 1, 2)           # (0, 1, 2, 0, 1, 2, 0, 1, 2)
+b"ab" * 2               # b"abab"
 ```
 
 Applications may define additional types that support any subset of
@@ -1986,27 +2066,31 @@ set([1, 2]) - set([2, 3])       # set([1])
 ```
 
 <b>Implementation note:</b>
-The Go implementation of Starlark requires the `-set` flag to
-enable support for sets.
-The Java implementation does not support sets.
+Set availability is controlled as described in [Sets](#sets). The command's
+legacy `-set` flag is obsolete; explicit `FileOptions` callers enable sets with
+`Set: true`.
 
 
 #### Membership tests
 
 ```text
-      any in     sequence		(list, tuple, dict, set, string)
+      any in     sequence        (list, tuple, dict, set, string)
+bytes|int in     bytes
+   number in     range
       any not in sequence
 ```
 
 The `in` operator reports whether its first operand is a member of its
-second operand, which must be a list, tuple, dict, set, or string.
-The `not in` operator is its negation.
-Both return a Boolean.
+second operand, which must be a list, tuple, dict, set, string, bytes, range,
+or an application-defined container. The `not in` operator is its negation.
+Both return a Boolean when their operands are valid.
 
 The meaning of membership varies by the type of the second operand:
-the members of a list, tuple, or set are its elements;
-the members of a dict are its keys;
-the members of a string are all its substrings.
+the members of a list, tuple, or set are its elements; the members of a dict
+are its keys; the members of a string are all its substrings; a bytes value
+accepts a bytes subsequence or an integer byte; and a range accepts an `int` or
+finite `float`, truncating a float toward zero before testing membership.
+Invalid left operand types for bytes and ranges are dynamic errors.
 
 ```python
 1 in [1, 2, 3]                  # True
@@ -2058,7 +2142,7 @@ operand types are valid and how to convert the operand `x` to a string:
 
 ```text
 %       none            literal percent sign
-s       any             as if by str(x)
+s       any             string x itself; otherwise as if by repr(x)
 r       any             as if by repr(x)
 d       number          signed integer decimal
 i       number          signed integer decimal
@@ -2076,7 +2160,9 @@ c       string          x (string must encode a single Unicode code point)
 ```
 
 It is an error if the argument does not have the type required by the
-conversion specifier.  A Boolean argument is not considered a number.
+conversion specifier. A Boolean argument is not considered a number. Because a
+bytes value is not a string, `%s` formats it using its representation, including
+the `b` prefix; this differs from `str(bytes_value)`.
 
 Examples:
 
@@ -2245,7 +2331,7 @@ of the value `x`.
 
 Fields are possessed by none of the main Starlark [data types](#data-types),
 but some application-defined types have them.
-Methods belong to the built-in types `string`, `list`, `dict`, and
+Methods belong to the built-in types `string`, `bytes`, `list`, `dict`, and
 `set`, and to many application-defined types.
 
 ```grammar {.good}
@@ -2284,9 +2370,10 @@ f("n")                                          # 2
 ### Index expressions
 
 An index expression `a[i]` yields the `i`th element of an _indexable_
-type such as a string, tuple, or list.  The index `i` must be an `int`
-value in the range -`n` ≤ `i` < `n`, where `n` is `len(a)`; any other
-index results in an error.
+type such as a string, bytes, tuple, list, or range. The index `i` must be an
+`int` value in the range -`n` <= `i` < `n`, where `n` is `len(a)`; any other
+index results in an error. Indexing a string or bytes value yields a value of
+the same type and length one.
 
 ```grammar {.good}
 SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
@@ -2314,19 +2401,21 @@ An index expression appearing on the left side of an assignment causes
 the specified list or dictionary element to be updated:
 
 ```starlark
-a = range(3)            # a == [0, 1, 2]
+a = list(range(3))      # a == [0, 1, 2]
 a[2] = 7                # a == [0, 1, 7]
 
 coins["suzie b"] = 100
 ```
 
 It is a dynamic error to attempt to update an element of an immutable
-type, such as a tuple or string, or a frozen value of a mutable type.
+type, such as a tuple, string, bytes, or range, or a frozen value of a mutable
+type.
 
 ### Slice expressions
 
 A slice expression `a[start:stop:stride]` yields a new value containing a
-sub-sequence of `a`, which must be a string, tuple, or list.
+sub-sequence of `a`, which must be a string, bytes, tuple, list, or range. The
+result has the same type as `a`.
 
 ```grammar {.good}
 SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
@@ -2371,11 +2460,10 @@ nearest value in the range -1 to `n`-1, inclusive.
 Unlike Python, Starlark does not allow a slice expression on the left
 side of an assignment.
 
-Slicing a tuple or string may be more efficient than slicing a list
-because tuples and strings are immutable, so the result of the
-operation can share the underlying representation of the original
-operand (when the stride is 1). By contrast, slicing a list requires
-the creation of a new list and copying of the necessary elements.
+Slicing an immutable value may be more efficient than slicing a list because
+the result can sometimes share the underlying representation of the original
+operand (when the stride is 1). By contrast, slicing a list requires the
+creation of a new list and copying of the necessary elements.
 
 <!-- TODO tighten up this section -->
 
@@ -2725,8 +2813,9 @@ An `if` statement is permitted only within a function definition.
 An `if` statement at top level results in a static error.
 
 <b>Implementation note:</b>
-The Go implementation of Starlark permits `if`-statements to appear at top level
-if the `-globalreassign` flag is enabled.
+The Go implementation permits top-level `if` statements when
+`FileOptions.TopLevelControl` is true. The legacy command's
+`-globalreassign` flag enables this option.
 
 
 ### While loops
@@ -2751,8 +2840,11 @@ A `while` statement is permitted only within a function definition.
 A `while` statement at top level results in a static error.
 
 <b>Implementation note:</b>
-The Go implementation of Starlark permits `while` loops only if the `-recursion` flag is enabled.
-A `while` statement is permitted at top level if the `-globalreassign` flag is enabled.
+The Go implementation permits `while` when `FileOptions.While` is true. A
+top-level `while` additionally requires `FileOptions.TopLevelControl`. The
+legacy command's `-globalreassign` flag enables both options. Despite its stale
+help text, `-recursion` enables recursive calls only and does not enable
+`while`.
 
 
 ### For loops
@@ -2794,8 +2886,9 @@ In Starlark, a `for` loop is permitted only within a function definition.
 A `for` loop at top level results in a static error.
 
 <b>Implementation note:</b>
-The Go implementation of Starlark permits loops to appear at top level
-if the `-globalreassign` flag is enabled.
+The Go implementation permits top-level `for` loops when
+`FileOptions.TopLevelControl` is true. The legacy command's
+`-globalreassign` flag enables this option.
 
 
 ### Break and Continue
@@ -2954,12 +3047,32 @@ If the iterable is empty, it returns `True`.
 `bool(x)` interprets `x` as a Boolean value---`True` or `False`.
 With no argument, `bool()` returns `False`.
 
+### bytes
+
+`bytes(x)` returns an immutable `bytes` value and requires exactly one
+positional argument:
+
+* If `x` is already a bytes value, the result is `x`.
+* If `x` is a string, it is transcoded from UTF-8 to UTF-8. Each byte that is
+  part of an invalid encoding is replaced by the UTF-8 encoding of U+FFFD.
+* If `x` is iterable, each element must be an integer from 0 through 255 and
+  becomes one byte of the result.
+
+`bytes` accepts no keyword arguments and, unlike Python, has no zero-argument or
+integer-size form.
+
+```python
+bytes("A\u0400")                 # b"A\u0400"
+bytes([65, 66, 67])              # b"ABC"
+bytes(b"ABC")                    # b"ABC"
+```
 
 ### chr
 
 `chr(i)` returns a string that encodes the single Unicode code point
-whose value is specified by the integer `i`. `chr` fails unless 0 ≤
-`i` ≤ 0x10FFFF.
+whose value is specified by the integer `i`. `chr` fails unless 0 <=
+`i` <= 0x10FFFF. In this Go implementation, a value in the surrogate range
+U+D800 to U+DFFF is converted to the Unicode replacement character U+FFFD.
 
 Example:
 
@@ -3033,9 +3146,9 @@ enumerate(["one", "two"], 1)                    # [(1, "one"), (2, "two")]
 
 The `fail(*args, sep=" ")` function causes execution to fail
 with the specified error message.
-Like `print`, arguments are formatted as if by `str(x)` and
-separated by a space, unless an alternative separator is
-specified by a `sep` named argument.
+Arguments are formatted as if by `str(x)` and separated by a space, unless an
+alternative separator is specified by a `sep` named argument. A bytes argument
+is the exception: it is formatted using `repr`, including its `b` prefix.
 
 ```python
 fail("oops")				# "fail: oops"
@@ -3047,8 +3160,12 @@ fail("oops", 1, False, sep='/')		# "fail: oops/1/False"
 `float(x)` interprets its argument as a floating-point number.
 
 If x is a `float`, the result is x.
-if x is an `int`, the result is the nearest floating point value to x.
-If x is a string, the string is interpreted as a floating-point literal.
+If x is a `bool`, the result is `0.0` or `1.0`.
+If x is an `int`, the result is the nearest floating-point value; conversion
+fails if the magnitude is too large for a finite float.
+If x is a string, the string is interpreted as a floating-point literal. The
+case-insensitive forms `nan`, `inf`, and `infinity`, with an optional sign, are
+accepted, but finite overflow is an error.
 With no arguments, `float()` returns `0.0`.
 
 
@@ -3072,20 +3189,20 @@ provided `default` value instead of failing.
 
 ### hash
 
-`hash(x)` returns an integer hash of a string x
-such that two equal strings have the same hash.
-In other words `x == y` implies `hash(x) == hash(y)`.
+`hash(x)` returns a deterministic integer hash of a string or bytes value such
+that equal values of the same type have equal hashes.
 
-In the interests of reproducibility of Starlark program behavior over time and
-across implementations, the specific hash function is the same as that implemented by
-[java.lang.String.hashCode](https://docs.oracle.com/javase/7/docs/api/java/lang/String.html#hashCode),
-a simple polynomial accumulator over the UTF-16 transcoding of the string:
- ```
+For strings, the function is the same as `java.lang.String.hashCode`, a
+polynomial accumulator over the UTF-16 transcoding of the string:
+
+```
 s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]
 ```
 
-`hash` fails if given a non-string operand,
-even if the value is hashable and thus suitable as the key of dictionary.
+For bytes, `hash` is the 32-bit FNV-1a hash of the raw byte sequence.
+
+`hash` fails for every other operand, even if the value is internally hashable
+and is therefore suitable as a dictionary key or set element.
 
 ### int
 
@@ -3171,19 +3288,22 @@ min("two", "three", "four", key=len)            # "two", the shortest
 
 ### ord
 
-`ord(s)` returns the integer value of the sole Unicode code point encoded by the string `s`.
+`ord(s)` accepts a string or bytes value. For a string, it returns the integer
+value of the sole Unicode code point encoded by `s`; each invalid UTF-8 byte is
+treated as the Unicode replacement character U+FFFD. For bytes, it returns the
+integer value of the sole byte.
 
-If `s` does not encode exactly one Unicode code point, `ord` fails.
-Each invalid code within the string is treated as if it encodes the
-Unicode replacement character, U+FFFD.
+The call fails unless its string argument encodes exactly one code point or its
+bytes argument has length one.
 
 Example:
 
 ```python
-ord("A")				# 65
-ord("Й")				# 1049
-ord("😿")					# 0x1F63F
-ord("Й"[1:])				# 0xFFFD (Unicode replacement character)
+ord("A")                        # 65
+ord("\u0419")                   # 1049
+ord("\U0001F63F")               # 0x1F63F
+ord("\u0419"[1:])               # 0xFFFD (Unicode replacement character)
+ord(b"A")                       # 65
 ```
 
 See also: `chr`.
@@ -3194,7 +3314,9 @@ See also: `chr`.
 
 `print(*args, sep=" ")` prints its arguments, followed by a newline.
 Arguments are formatted as if by `str(x)` and separated with a space,
-unless an alternative separator is specified by a `sep` named argument.
+unless an alternative separator is specified by a `sep` named argument. A
+bytes argument is written as its raw byte sequence, without the `b` prefix and
+without UTF-8 replacement.
 
 Example:
 
@@ -3250,9 +3372,10 @@ Range values are not hashable.  <!-- should they be? -->
 The `str` function applied to a `range` value yields a string of the
 form `range(10)`, `range(1, 10)`, or `range(1, 10, 2)`.
 
-The `x in y` operator, where `y` is a range, reports whether `x` is equal to
-some member of the sequence `y`; the operation fails unless `x` is a
-number.
+The `x in y` operator, where `y` is a range, accepts an `int` or finite
+`float`. A float is truncated toward zero, then the operation reports whether
+the resulting integer is a member of the range. Other values, NaN, and
+infinities are dynamic errors.
 
 ### repr
 
@@ -3263,6 +3386,7 @@ All strings in the result are double-quoted.
 ```python
 repr(1)                 # '1'
 repr("x")               # '"x"'
+repr(b"x")              # 'b"x"'
 repr([1, "x"])          # '[1, "x"]'
 ```
 
@@ -3286,8 +3410,8 @@ set([3, 1, 4, 1, 5, 9])         # set([3, 1, 4, 5, 9])
 ```
 
 <b>Implementation note:</b>
-Sets are an optional feature of the Go implementation of Starlark,
-enabled by the `-set` flag.
+Set availability is controlled as described in [Sets](#sets). The legacy API
+and command enable it; explicit `FileOptions` callers use `Set: true`.
 
 
 ### sorted
@@ -3295,12 +3419,13 @@ enabled by the `-set` flag.
 `sorted(x)` returns a new list containing the elements of the iterable sequence x,
 in sorted order.  The sort algorithm is stable.
 
-The optional named parameter `reverse`, if true, causes `sorted` to
-return results in reverse sorted order.
+The optional `key` parameter specifies a function of one argument to apply to
+obtain each value's sort key. If omitted, values themselves are compared. An
+explicit `None` is not accepted as a key.
 
-The optional named parameter `key` specifies a function of one
-argument to apply to obtain the value's sort key.
-The default behavior is the identity function.
+The optional Boolean `reverse` parameter causes results to be returned in
+reverse sorted order. Unlike current Python, `key` and `reverse` may be supplied
+positionally or by name, in that order.
 
 ```python
 sorted(set("harbors".codepoints()))                             # ['a', 'b', 'h', 'o', 'r', 's']
@@ -3316,12 +3441,14 @@ sorted(["two", "three", "four"], key=len, reverse=True)         # ["three", "fou
 
 `str(x)` formats its argument as a string.
 
-If x is a string, the result is x (without quotation).
-All other strings, such as elements of a list of strings, are double-quoted.
+If x is a string, the result is x (without quotation). If x is bytes, the raw
+bytes are UTF-8-decoded into a string, replacing each invalid byte with U+FFFD.
+For other values, nested strings in the representation are double-quoted.
 
 ```python
 str(1)                          # '1'
 str("x")                        # 'x'
+str(b"x")                       # 'x'
 str([1, "x"])                   # '[1, "x"]'
 ```
 
@@ -3792,6 +3919,17 @@ x = set([1, 2])
 x.update([2, 3], [4, 5])
 ```
 
+<a id='bytes·elems'></a>
+### bytes·elems
+
+`B.elems()` returns an iterable view of the integer values of the successive
+bytes in B. The view is not hashable.
+
+```python
+list(b"A\xff".elems())          # [65, 255]
+bytes(b"A\xff".elems())         # b"A\xff"
+```
+
 <a id='string·elem_ords'></a>
 ### string·elem_ords
 
@@ -3928,9 +4066,10 @@ they may be omitted and those values will be implied; however,
 the explicit and implicit forms may not be mixed.
 
 The *conversion* specifies how to convert an argument value `x` to a
-string. It may be either `!r`, which converts the value using
-`repr(x)`, or `!s`, which converts the value using `str(x)` and is
-the default.
+string. It may be either `!r`, which uses `repr(x)`, or `!s`, which emits a
+string argument without quotes and otherwise also uses `repr(x)`. The latter is
+the default. Consequently, bytes retain their `b` prefix for all three forms;
+this differs from `str(bytes_value)`.
 
 The *format specifier*, after a colon, specifies field width,
 alignment, padding, and numeric precision.
@@ -3941,6 +4080,7 @@ Currently it must be empty, but it is reserved for future use.
 "a{}b{}c".format(1, 2)                          # "a1b2c"
 "({1}, {0})".format("zero", "one")              # "(one, zero)"
 "Is {0!r} {0!s}?".format('heterological')       # 'Is "heterological" heterological?'
+"{}".format(b"x")                               # 'b"x"'
 ```
 
 <a id='string·index'></a>
@@ -4347,8 +4487,14 @@ See [Starlark spec issue 20](https://github.com/bazelbuild/starlark/issues/20).
 * Strings support hex byte escapes.
 * Strings have the additional methods `elem_ords`, `codepoint_ords`, and `codepoints`.
 * The `chr` and `ord` built-in functions are supported.
-* The `set` built-in function is provided (option: `-set`).
+* The `bytes` type, `b"..."` and `rb"..."` literals, `bytes` built-in, and
+  `bytes.elems` method are supported.
+* The `set` built-in function is provided. It is enabled by the legacy API and
+  command; explicit `FileOptions` callers use `Set: true`.
 * `set & set` and `set | set` compute set intersection and union, respectively.
 * `assert` is a valid identifier.
-* `if`, `for`, and `while` are permitted at top level (option: `-globalreassign`).
-* top-level rebindings are permitted (option: `-globalreassign`).
+* `while` is permitted when `FileOptions.While` is true.
+* `if`, `for`, and `while` are permitted at top level when
+  `FileOptions.TopLevelControl` is true (legacy command: `-globalreassign`).
+* Top-level rebindings are permitted when `FileOptions.GlobalReassign` is true
+  (legacy command: `-globalreassign`).
