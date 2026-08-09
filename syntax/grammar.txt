@@ -57,7 +57,7 @@ PrimaryExpr = Operand
             .
 
 Operand = identifier
-        | int | float | string
+        | int | float | string | bytes
         | ListExpr | ListComp
         | DictExpr | DictComp
         | '(' [Expression [',']] ')'
@@ -113,7 +113,7 @@ LoopVariables = PrimaryExpr {',' PrimaryExpr} .
 # Tokens
 - spaces: newline, eof, indent, outdent.
 - identifier.
-- literals: string, int, float.
+- literals: bytes, string, int, float.
 - plus all quoted tokens such as '+=', 'return'.
 
 # Notes:
