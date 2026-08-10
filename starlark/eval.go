@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"go.starlark.net/internal/compile"
 	"go.starlark.net/internal/spell"
@@ -1020,7 +1018,7 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 				return x.Mod(yf), nil
 			}
 		case String:
-			return interpolate(string(x), y)
+			return percentInterpolate(string(x), y)
 		}
 
 	case syntax.NOT_IN:
@@ -1509,129 +1507,6 @@ func findParam(params []compile.Binding, name string) int {
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string-interpolation
-func interpolate(format string, x Value) (Value, error) {
-	buf := new(strings.Builder)
-	index := 0
-	nargs := 1
-	if tuple, ok := x.(Tuple); ok {
-		nargs = len(tuple)
-	}
-	for {
-		i := strings.IndexByte(format, '%')
-		if i < 0 {
-			buf.WriteString(format)
-			break
-		}
-		buf.WriteString(format[:i])
-		format = format[i+1:]
-
-		if format != "" && format[0] == '%' {
-			buf.WriteByte('%')
-			format = format[1:]
-			continue
-		}
-
-		var arg Value
-		if format != "" && format[0] == '(' {
-			// keyword argument: %(name)s.
-			format = format[1:]
-			j := strings.IndexByte(format, ')')
-			if j < 0 {
-				return nil, fmt.Errorf("incomplete format key")
-			}
-			key := format[:j]
-			if dict, ok := x.(Mapping); !ok {
-				return nil, fmt.Errorf("format requires a mapping")
-			} else if v, found, _ := dict.Get(String(key)); found {
-				arg = v
-			} else {
-				return nil, fmt.Errorf("key not found: %s", key)
-			}
-			format = format[j+1:]
-		} else {
-			// positional argument: %s.
-			if index >= nargs {
-				return nil, fmt.Errorf("not enough arguments for format string")
-			}
-			if tuple, ok := x.(Tuple); ok {
-				arg = tuple[index]
-			} else {
-				arg = x
-			}
-		}
-
-		// NOTE: Starlark does not support any of these optional Python features:
-		// - optional conversion flags: [#0- +], etc.
-		// - optional minimum field width (number or *).
-		// - optional precision (.123 or *)
-		// - optional length modifier
-
-		// conversion type
-		if format == "" {
-			return nil, fmt.Errorf("incomplete format")
-		}
-		switch c := format[0]; c {
-		case 's', 'r':
-			if str, ok := AsString(arg); ok && c == 's' {
-				buf.WriteString(str)
-			} else {
-				writeValue(buf, arg, nil)
-			}
-		case 'd', 'i', 'o', 'x', 'X':
-			i, err := NumberToInt(arg)
-			if err != nil {
-				return nil, fmt.Errorf("%%%c format requires integer: %v", c, err)
-			}
-			switch c {
-			case 'd', 'i':
-				fmt.Fprintf(buf, "%d", i)
-			case 'o':
-				fmt.Fprintf(buf, "%o", i)
-			case 'x':
-				fmt.Fprintf(buf, "%x", i)
-			case 'X':
-				fmt.Fprintf(buf, "%X", i)
-			}
-		case 'e', 'f', 'g', 'E', 'F', 'G':
-			f, ok := AsFloat(arg)
-			if !ok {
-				return nil, fmt.Errorf("%%%c format requires float, not %s", c, arg.Type())
-			}
-			Float(f).format(buf, c)
-		case 'c':
-			switch arg := arg.(type) {
-			case Int:
-				// chr(int)
-				r, err := AsInt32(arg)
-				if err != nil || r < 0 || r > unicode.MaxRune {
-					return nil, fmt.Errorf("%%c format requires a valid Unicode code point, got %s", arg)
-				}
-				buf.WriteRune(rune(r))
-			case String:
-				r, size := utf8.DecodeRuneInString(string(arg))
-				if size != len(arg) || len(arg) == 0 {
-					return nil, fmt.Errorf("%%c format requires a single-character string")
-				}
-				buf.WriteRune(r)
-			default:
-				return nil, fmt.Errorf("%%c format requires int or single-character string, not %s", arg.Type())
-			}
-		case '%':
-			buf.WriteByte('%')
-		default:
-			return nil, fmt.Errorf("unknown conversion %%%c", c)
-		}
-		format = format[1:]
-		index++
-	}
-
-	if index < nargs && !is[Mapping](x) {
-		return nil, fmt.Errorf("too many arguments for format string")
-	}
-
-	return String(buf.String()), nil
-}
-
 func is[T any](x any) bool {
 	_, ok := x.(T)
 	return ok

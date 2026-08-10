@@ -171,28 +171,65 @@ assert.eq(gothash, wanthash)
 
 # TODO(adonovan): ordered comparisons
 
-# string % tuple formatting
+# printf-style string formatting
 assert.eq("A" % (), "A")
 assert.eq("A %d %x Z" % (123, 456), "A 123 1c8 Z")
-assert.eq("A" % {'unused': 123}, "A")
+assert.eq("A" % {"unused": 123}, "A")
 assert.eq("A %(foo)d %(bar)s Z" % {"foo": 123, "bar": "hi"}, "A 123 hi Z")
-assert.eq("%s %r" % ("hi", "hi"), 'hi "hi"')  # TODO(adonovan): use ''-quotation
+assert.eq("%(language)s has %(number)03d types" % {
+    "language": "Python",
+    "number": 2,
+}, "Python has 002 types")
+assert.eq("%(foo(bar))s" % {"foo(bar)": "nested"}, "nested")
+assert.eq("%s %r" % ("hi", "hi"), 'hi "hi"')
+assert.eq("%a" % "α", r'"\u03b1"')
 assert.eq("%%d %d" % 1, "%d 1")
+assert.eq("%+d % d" % (42, 42), "+42  42")
+assert.eq("%08d" % -42, "-0000042")
+assert.eq("%05.3d" % 1, "00001")
+assert.eq("%-8s" % "x", "x       ")
+assert.eq("%#08x" % 42, "0x00002a")
+assert.eq("%#o %#x" % (0, 0), "0o0 0x0")
+assert.eq("%.3d" % 1, "001")
+assert.eq("%8.3d" % 1, "     001")
+assert.eq("%.3s" % "aαβγ", "aαβ")
+assert.eq("%*.*s" % (6, 3, "abcdef"), "   abc")
+assert.eq("%*s" % (-5, "x"), "x    ")
+assert.eq("%.*f" % (-1, 1.2), "1")
+assert.eq("%+010.2f" % 12.3456, "+000012.35")
+assert.eq("%-10.2f" % 12.3456, "12.35     ")
+assert.eq("%#g" % 1.0, "1.00000")
+assert.eq("%#g" % 0.0001234, "0.000123400")
+assert.eq("%#.12g" % 0.0001234, "0.000123400000000")
+assert.eq("%u" % -3, "-3")
+assert.eq("%F" % float("+Inf"), "INF")
+assert.eq("%G" % 1e6, "1E+06")
+assert.eq("%ld %hd %Ld" % (1, 2, 3), "1 2 3")
+assert.eq("%d %x" % (True, True), "1 1")
+assert.eq("%s" % ((1, 2),), "(1, 2)")
+assert.eq("%s %(x)s" % {"x": 1}, '{"x": 1} 1')
+assert.fails(lambda: "%(x)s %s" % {"x": 1}, "not enough arguments")
 assert.fails(lambda: "%d %d" % 1, "not enough arguments for format string")
 assert.fails(lambda: "%d %d" % (1, 2, 3), "too many arguments for format string")
 assert.fails(lambda: "" % 1, "too many arguments for format string")
+assert.fails(lambda: "%x" % 1.0, "integer is required")
+assert.fails(lambda: "%*s" % (1.0, "x"), "width requires int")
+assert.fails(lambda: "%(x)*s" % {"x": "value"}, "cannot be used with a parenthesised mapping key")
+assert.fails(lambda: "%(x).*s" % {"x": "value"}, "cannot be used with a parenthesised mapping key")
+assert.fails(lambda: "%q" % 1, "unsupported format character")
 
 # %c
 assert.eq("%c" % 65, "A")
 assert.eq("%c" % 0x3b1, "α")
 assert.eq("%c" % "A", "A")
 assert.eq("%c" % "α", "α")
+assert.eq("%c" % True, "\x01")
+assert.eq("%05c" % 65, "    A")
 assert.fails(lambda: "%c" % "abc", "requires a single-character string")
 assert.fails(lambda: "%c" % "", "requires a single-character string")
 assert.fails(lambda: "%c" % 65.0, "requires int or single-character string")
 assert.fails(lambda: "%c" % 10000000, "requires a valid Unicode code point")
 assert.fails(lambda: "%c" % -1, "requires a valid Unicode code point")
-# TODO(adonovan): more tests
 
 # str.format
 # str.format field syntax and conversions
@@ -274,6 +311,7 @@ assert.eq(format(-0.0, "z.1f"), "0.0")
 assert.eq(format(12.0, "#.0f"), "12.")
 assert.eq(format(1.0, "#"), "1.0")
 assert.eq(format(1.0, "#g"), "1.00000")
+assert.eq(format(0.0001234, "#g"), "0.000123400")
 assert.eq(format(1505.0, "#.3g"), "1.50e+03")
 assert.eq(format(1.2, "F"), "1.200000")
 assert.eq(format(float("+Inf"), "F"), "INF")

@@ -2111,85 +2111,80 @@ d = {"one": 1, "two": 2}
 
 #### String interpolation
 
-The expression `format % args` performs _string interpolation_, a
-simple form of template expansion.
-The `format` string is interpreted as a sequence of literal portions
-and _conversions_.
-Each conversion, which starts with a `%` character, is replaced by its
-corresponding value from `args`.
-The characters following `%` in each conversion determine which
-argument it uses and how to convert it to a string.
+The expression `format % values` performs Python-style `printf` string
+formatting. Literal portions are copied unchanged and conversion directives
+beginning with `%` are replaced by formatted values. `%%` produces one literal
+percent sign and consumes no value.
 
-Each `%` character marks the start of a conversion specifier, unless
-it is immediately followed by another `%`, in which case both
-characters together denote a literal percent sign.
-
-If the `"%"` is immediately followed by `"(key)"`, the parenthesized
-substring specifies the key of the `args` dictionary whose
-corresponding value is the operand to convert.
-Otherwise, the conversion's operand is the next element of `args`,
-which must be a tuple with exactly one component per conversion,
-unless the format string contains only a single conversion, in which
-case `args` itself is its operand.
-
-If the format string contains no conversions, the operand must be a
-`Mapping` or an empty tuple.
-
-Starlark does not support the flag, width, and padding specifiers
-supported by Python's `%` and other variants of C's `printf`.
-
-After the optional `(key)` comes a single letter indicating what
-operand types are valid and how to convert the operand `x` to a string:
+A directive has these components in order:
 
 ```text
-%       none            literal percent sign
-s       any             string x itself; otherwise as if by repr(x)
-r       any             as if by repr(x)
-d       number          signed integer decimal
-i       number          signed integer decimal
-o       number          signed octal
-x       number          signed hexadecimal, lowercase
-X       number          signed hexadecimal, uppercase
-e       number          float exponential format, lowercase
-E       number          float exponential format, uppercase
-f       number          float decimal format, lowercase
-F       number          float decimal format, uppercase
-g       number          like %e for large exponents, %f otherwise
-G       number          like %E for large exponents, %F otherwise
-c       string          x (string must encode a single Unicode code point)
-        int             as if by chr(x)
+%[mapping_key][flags][width][.precision][length]conversion
 ```
 
-It is an error if the argument does not have the type required by the
-conversion specifier. A Boolean argument is not considered a number. Because a
-bytes value is not a string, `%s` formats it using its representation, including
-the `b` prefix, consistently with `str(bytes_value)`.
+A `mapping_key` is a parenthesized string such as `%(name)`. It selects that
+string key from the mapping supplied as `values`; balanced parentheses may
+appear inside the key. Otherwise values are consumed positionally. A tuple
+supplies successive positional values, while a non-tuple may supply one value.
+If no values are consumed, the operand must be an empty tuple or a mapping.
 
-Examples:
+The optional flags are:
+
+```text
+#    use the alternate numeric form
+0    zero-pad numeric values
+-    left-align, overriding zero padding
+space prefix positive signed numbers with a space
++    always include a numeric sign, overriding space
+```
+
+`width` is a decimal minimum field width or `*`, which reads the width from the
+next positional value. A negative dynamic width selects left alignment. The
+optional precision is a decimal number or `*`; a bare `.` and a negative dynamic
+precision both mean zero. Dynamic width and precision values must be integers.
+The optional C length modifiers `h`, `l`, and `L` are accepted and ignored.
+
+The conversion types are:
+
+```text
+%       literal percent sign, only in the unmodified form %%
+s       as if by str
+r       as if by repr
+a       as if by an ASCII-escaped repr
+c       integer Unicode code point or one-code-point string
+d i u   signed decimal integer
+o       signed octal integer
+x X     signed hexadecimal integer
+e E     floating-point exponential notation
+f F     floating-point fixed-point notation
+g G     floating-point general notation
+```
+
+For `s`, `r`, and `a`, precision truncates the converted text to that many UTF-8
+code points. For integer conversions, precision specifies a minimum digit
+count. For `e`, `E`, `f`, and `F`, precision is the number of digits after the
+decimal point; for `g` and `G`, it is the number of significant digits. Floating
+precision defaults to six. Boolean values format numerically as `0` or `1`.
+Decimal conversions accept finite floats and truncate them toward zero, while
+octal and hexadecimal conversions require an integer or boolean.
 
 ```python
 "Hello %s, your score is %d" % ("Bob", 75)      # "Hello Bob, your score is 75"
-
-"%d %o %x %c" % (65, 65, 65, 65)                # "65 101 41 A" (decimal, octal, hexadecimal, Unicode)
-
-"%(greeting)s, %(audience)s" % dict(            # "Hello, world"
-  greeting="Hello",
-  audience="world",
-)
-
-"rate = %g%% APR" % 3.5                         # "rate = 3.5% APR"
+"%#08x" % 42                                    # "0x00002a"
+"%*.*s" % (6, 3, "abcdef")                     # "   abc"
+"%(language)s has %(number)03d types" % dict(
+  language="Python",
+  number=2,
+)                                                # "Python has 002 types"
+"rate = %.1f%% APR" % 3.5                       # "rate = 3.5% APR"
 ```
 
-One subtlety: to use a tuple as the operand of a conversion in format
-string containing only a single conversion, you must wrap the tuple in
-a singleton tuple:
+To use a tuple as one conversion operand, wrap it in a singleton tuple:
 
 ```python
-"coordinates=%s" % (40.741491, -74.003680)	# error: too many arguments for format string
-"coordinates=%s" % ((40.741491, -74.003680),)	# "coordinates=(40.741491, -74.003680)"
+"coordinates=%s" % (40.741491, -74.003680)      # error: too many arguments
+"coordinates=%s" % ((40.741491, -74.003680),)   # "coordinates=(40.741491, -74.00368)"
 ```
-
-TODO: specify `%e` and `%f` more precisely.
 
 ### Conditional expressions
 

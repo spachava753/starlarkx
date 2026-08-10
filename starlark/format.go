@@ -749,10 +749,21 @@ func alternateFloat(body string, typ byte, precision int) string {
 			precision = 6
 		}
 		digits := 0
+		significant := false
 		for _, c := range body {
-			if c >= '0' && c <= '9' {
-				digits++
+			if c < '0' || c > '9' {
+				continue
 			}
+			if !significant {
+				if c == '0' {
+					continue
+				}
+				significant = true
+			}
+			digits++
+		}
+		if digits == 0 {
+			digits = 1
 		}
 		if digits < precision {
 			body += strings.Repeat("0", precision-digits)
