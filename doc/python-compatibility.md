@@ -118,7 +118,7 @@ before resolving any of them.
 | Calls / `print` formatting | `PYTHON` | `DEFAULT` | `YES` | Convert each object with `str`, join with keyword-only `sep`, and append keyword-only `end`; accept `None` as the default for either option. | Match Python's textual formatting contract, including partial lines and custom terminators. |
 | Calls / `print` destination and flushing | `STARLARK` | `HOST` | `YES` | Deliver each complete formatted text fragment through `Thread.Print`, with standard error as the fallback; provide no `file` or `flush` parameters. | Keep output effects controlled by the embedding host rather than exposing Python's process I/O model. |
 | Calls / Percent formatting | `OPEN` | - | - | - | - |
-| Calls / `str.format` | `OPEN` | - | - | - | - |
+| Calls / Brace formatting (`str.format`, `str.format_map`, `format`) | `PYTHON` | `DEFAULT` | `YES` | Support attribute and item field traversal, `!s`/`!r`/`!a`, one-level nested fields, and the standard format specification for available scalar value types. | Provide Python's shared brace-formatting model behind all three interfaces while keeping locale and user-defined type protocols outside the core value model. |
 | Calls / Float parsing protocols | `OPEN` | - | - | - | - |
 | Calls / Extensibility | `OPEN` | - | - | - | - |
 | Syntax / Adjacent string literals | `OPEN` | - | - | - | - |
@@ -257,7 +257,7 @@ module definitions. They are not incidental parser gaps.
 | `min`/`max` | Support `key`, but not Python's `default` argument for an empty iterable. | Support both `key` and `default`. | Restriction |
 | `print` | Converts each object with `str`, joins with keyword-only `sep`, and appends keyword-only `end`; either formatting option accepts `None` for its default. The complete text is delivered to the host's thread callback, and `file` and `flush` are not supported. | Uses the same textual formatting options, additionally supports `file` and `flush`, and defaults to standard output. | Restriction / divergence |
 | Percent formatting | Supports basic `%s`, `%r`, integer, float, character, and mapping conversions, but no flags, width, precision, or length modifiers. Booleans are not numbers. | Supports the fuller printf-style formatting surface and follows Python's bytes/text distinctions. | Restriction / divergence |
-| `str.format` | Supports positional/keyword replacement and `!s`/`!r`, but not attribute/index traversal, nested fields, or format specifications. | Supports the full format mini-language and Python conversion semantics. | Restriction / divergence |
+| Brace formatting (`str.format`, `str.format_map`, `format`) | Supports attribute and item field traversal, `!s`/`!r`/`!a`, one-level nested fields, and the standard format specification for strings, integers, floats, and booleans. The `n` presentation is locale-neutral, and other values accept only an empty specification. | Supports the same syntax through all three interfaces, with locale-aware `n`, complex numbers, and user-defined `__format__` protocols. | Aligned for available value types / restriction |
 | Float parsing protocols | `float` accepts only bool, int, float, or string and errors on overflow. | Also participates in Python's object conversion protocols and accepts infinity-producing overflow strings. | Restriction / divergence |
 | Extensibility | Only Go-defined values can add fields, methods, call behavior, truth, hashing, comparison, iteration, and operators. | Python code can implement these through classes and special methods. | Omission at language level |
 
@@ -333,8 +333,9 @@ contains:
 
 ```text
 None True False
-abs all any bool bytes chr dict dir enumerate fail float getattr hasattr hash
-int len list max min ord print range repr reversed set sorted str tuple type zip
+abs all any bool bytes chr dict dir enumerate fail float format getattr hasattr
+hash int len list max min ord print range repr reversed set sorted str tuple type
+zip
 ```
 
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
@@ -344,7 +345,7 @@ Python built-ins related to the object model, dynamic execution, I/O, iteration,
 exceptions, and reflection are absent. The missing Python 3.14 built-ins include
 `__import__`, `aiter`, `anext`, `ascii`, `bin`, `breakpoint`, `bytearray`,
 `callable`, `classmethod`, `compile`, `complex`, `delattr`, `divmod`, `eval`,
-`exec`, `filter`, `format`, `frozenset`, `globals`, `help`, `hex`, `id`, `input`,
+`exec`, `filter`, `frozenset`, `globals`, `help`, `hex`, `id`, `input`,
 `isinstance`, `issubclass`, `iter`, `locals`, `map`, `memoryview`, `next`,
 `object`, `oct`, `open`, `pow`, `property`, `round`, `setattr`, `slice`,
 `staticmethod`, `sum`, `super`, and `vars`.
@@ -358,8 +359,8 @@ Built-in type methods are also a subset rather than a compatibility layer:
 - Sets omit `copy`, `difference_update`, `intersection_update`, `isdisjoint`,
   and `symmetric_difference_update`.
 - Strings add explicit byte/code-point iterator methods but omit Python methods
-  including `casefold`, `center`, `encode`, `expandtabs`, `format_map`,
-  `isascii`, `isdecimal`, `isidentifier`, `isnumeric`, `isprintable`, `ljust`,
+  including `casefold`, `center`, `encode`, `expandtabs`, `isascii`,
+  `isdecimal`, `isidentifier`, `isnumeric`, `isprintable`, `ljust`,
   `maketrans`, `rjust`, `swapcase`, `translate`, and `zfill`.
 - Bytes provide only `.elems()`; tuples, ranges, integers, and floats expose no
   Python-style methods.
@@ -426,7 +427,8 @@ A practical extension plan can group work by architectural depth:
    These changes are localized conceptually but can break Starlark code.
 3. **Extend parser and evaluator**: chained comparisons, literal
    concatenation, numeric separators, richer unpacking, slice assignment,
-   loop `else`, formatting, f-strings, and additional comprehension forms.
+   loop `else`, richer percent formatting, f-strings, and additional
+   comprehension forms.
 4. **Add new runtime subsystems**: exceptions, generators/iterators, classes
    and Python's object protocol, imports/module objects, context managers,
    async execution, and broad standard-library compatibility. These are not

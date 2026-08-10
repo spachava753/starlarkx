@@ -51,6 +51,7 @@ func init() {
 		"enumerate": NewBuiltin("enumerate", enumerate),
 		"fail":      NewBuiltin("fail", fail),
 		"float":     NewBuiltin("float", float),
+		"format":    NewBuiltin("format", format_),
 		"getattr":   NewBuiltin("getattr", getattr),
 		"hasattr":   NewBuiltin("hasattr", hasattr),
 		"hash":      NewBuiltin("hash", hash),
@@ -112,6 +113,7 @@ var (
 		"endswith":       NewBuiltin("endswith", string_startswith), // sic
 		"find":           NewBuiltin("find", string_find),
 		"format":         NewBuiltin("format", string_format),
+		"format_map":     NewBuiltin("format_map", string_format_map),
 		"index":          NewBuiltin("index", string_index),
 		"isalnum":        NewBuiltin("isalnum", string_isalnum),
 		"isalpha":        NewBuiltin("isalpha", string_isalpha),
@@ -1682,162 +1684,6 @@ func string_isupper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·find
 func string_find(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, true, false)
-}
-
-// https://github.com/google/starlark-go/blob/master/doc/spec.md#string·format
-func string_format(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	format := string(b.Receiver().(String))
-	var auto, manual bool // kinds of positional indexing used
-	buf := new(strings.Builder)
-	index := 0
-	for {
-		literal := format
-		i := strings.IndexByte(format, '{')
-		if i >= 0 {
-			literal = format[:i]
-		}
-
-		// Replace "}}" with "}" in non-field portion, rejecting a lone '}'.
-		for {
-			j := strings.IndexByte(literal, '}')
-			if j < 0 {
-				buf.WriteString(literal)
-				break
-			}
-			if len(literal) == j+1 || literal[j+1] != '}' {
-				return nil, fmt.Errorf("format: single '}' in format")
-			}
-			buf.WriteString(literal[:j+1])
-			literal = literal[j+2:]
-		}
-
-		if i < 0 {
-			break // end of format string
-		}
-
-		if i+1 < len(format) && format[i+1] == '{' {
-			// "{{" means a literal '{'
-			buf.WriteByte('{')
-			format = format[i+2:]
-			continue
-		}
-
-		format = format[i+1:]
-		i = strings.IndexByte(format, '}')
-		if i < 0 {
-			return nil, fmt.Errorf("format: unmatched '{' in format")
-		}
-
-		var arg Value
-		conv := "s"
-		var spec string
-
-		field := format[:i]
-		format = format[i+1:]
-
-		var name string
-		if i := strings.IndexByte(field, '!'); i < 0 {
-			// "name" or "name:spec"
-			if i := strings.IndexByte(field, ':'); i < 0 {
-				name = field
-			} else {
-				name = field[:i]
-				spec = field[i+1:]
-			}
-		} else {
-			// "name!conv" or "name!conv:spec"
-			name = field[:i]
-			field = field[i+1:]
-			// "conv" or "conv:spec"
-			if before, after, ok := strings.Cut(field, ":"); !ok {
-				conv = field
-			} else {
-				conv = before
-				spec = after
-			}
-		}
-
-		if name == "" {
-			// "{}": automatic indexing
-			if manual {
-				return nil, fmt.Errorf("format: cannot switch from manual field specification to automatic field numbering")
-			}
-			auto = true
-			if index >= len(args) {
-				return nil, fmt.Errorf("format: tuple index out of range")
-			}
-			arg = args[index]
-			index++
-		} else if num, ok := decimal(name); ok {
-			// positional argument
-			if auto {
-				return nil, fmt.Errorf("format: cannot switch from automatic field numbering to manual field specification")
-			}
-			manual = true
-			if num >= len(args) {
-				return nil, fmt.Errorf("format: tuple index out of range")
-			} else {
-				arg = args[num]
-			}
-		} else {
-			// keyword argument
-			for _, kv := range kwargs {
-				if string(kv[0].(String)) == name {
-					arg = kv[1]
-					break
-				}
-			}
-			if arg == nil {
-				// Starlark does not support Python's x.y or a[i] syntaxes,
-				// or nested use of {...}.
-				if strings.Contains(name, ".") {
-					return nil, fmt.Errorf("format: attribute syntax x.y is not supported in replacement fields: %s", name)
-				}
-				if strings.Contains(name, "[") {
-					return nil, fmt.Errorf("format: element syntax a[i] is not supported in replacement fields: %s", name)
-				}
-				if strings.Contains(name, "{") {
-					return nil, fmt.Errorf("format: nested replacement fields not supported")
-				}
-				return nil, fmt.Errorf("format: keyword %s not found", name)
-			}
-		}
-
-		if spec != "" {
-			// Starlark does not support Python's format_spec features.
-			return nil, fmt.Errorf("format spec features not supported in replacement fields: %s", spec)
-		}
-
-		switch conv {
-		case "s":
-			if str, ok := AsString(arg); ok {
-				buf.WriteString(str)
-			} else {
-				writeValue(buf, arg, nil)
-			}
-		case "r":
-			writeValue(buf, arg, nil)
-		default:
-			return nil, fmt.Errorf("format: unknown conversion %q", conv)
-		}
-	}
-	return String(buf.String()), nil
-}
-
-// decimal interprets s as a sequence of decimal digits.
-func decimal(s string) (x int, ok bool) {
-	n := len(s)
-	for i := range n {
-		digit := s[i] - '0'
-		if digit > 9 {
-			return 0, false
-		}
-		x = x*10 + int(digit)
-		if x < 0 {
-			return 0, false // underflow
-		}
-	}
-	return x, true
 }
 
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#string·index

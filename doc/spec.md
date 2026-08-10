@@ -564,8 +564,8 @@ values, 1-byte substrings, numeric Unicode code points, or 1-code
 point substrings, you must explicitly call one of its four methods:
 `elems`, `elem_ords`, `codepoints`, or `codepoint_ords`.
 
-Any value may formatted as a string using the `str` or `repr` built-in
-functions, the `str % tuple` operator, or the `str.format` method.
+Any value may be formatted as a string using the `str`, `repr`, or `format`
+built-in functions, the `str % tuple` operator, or the `str.format` method.
 
 A string used in a Boolean context is considered true if it is
 non-empty.
@@ -581,6 +581,7 @@ Strings have several built-in methods:
 * [`endswith`](#string·endswith)
 * [`find`](#string·find)
 * [`format`](#string·format)
+* [`format_map`](#string·format_map)
 * [`index`](#string·index)
 * [`isalnum`](#string·isalnum)
 * [`isalpha`](#string·isalpha)
@@ -3147,8 +3148,7 @@ enumerate(["one", "two"], 1)                    # [(1, "one"), (2, "two")]
 The `fail(*args, sep=" ")` function causes execution to fail
 with the specified error message.
 Arguments are formatted as if by `str(x)` and separated by a space, unless an
-alternative separator is specified by a `sep` named argument. A bytes argument
-is the exception: it is formatted using `repr`, including its `b` prefix.
+alternative separator is specified by a `sep` named argument.
 
 ```python
 fail("oops")				# "fail: oops"
@@ -3168,6 +3168,18 @@ case-insensitive forms `nan`, `inf`, and `infinity`, with an optional sign, are
 accepted, but finite overflow is an error.
 With no arguments, `float()` returns `0.0`.
 
+### format
+
+`format(value[, format_spec])` formats `value` according to the optional string
+`format_spec`. An empty specification produces the same result as `str(value)`.
+Non-empty specifications use the shared
+[format specification mini-language](#format-specification-mini-language).
+
+```python
+format(42, "#06x")              # "0x002a"
+format(12345.6, ",.2f")         # "12,345.60"
+format("hi", "*^8")            # "***hi***"
+```
 
 ### getattr
 
@@ -4042,49 +4054,97 @@ If no occurrence is found, `found` returns -1.
 <a id='string·format'></a>
 ### string·format
 
-`S.format(*args, **kwargs)` returns a version of the format string S
-in which bracketed portions `{...}` are replaced
-by arguments from `args` and `kwargs`.
+`S.format(*args, **kwargs)` returns a version of `S` in which replacement
+fields delimited by `{` and `}` are replaced by formatted arguments. Literal
+braces are escaped as `{{` and `}}`.
 
-Within the format string, a pair of braces `{{` or `}}` is treated as
-a literal open or close brace.
-Each unpaired open brace must be matched by a close brace `}`.
-The optional text between corresponding open and close braces
-specifies which argument to use and how to format it, and consists of
-three components, all optional:
-a field name, a conversion preceded by '`!`', and a format specifier
-preceded by '`:`'.
+A replacement field has this grammar:
 
 ```text
-{field}
-{field:spec}
-{field!conv}
-{field!conv:spec}
+replacement_field = "{" [field_name] ["!" conversion] [":" format_spec] "}"
+field_name        = arg_name ("." attribute_name | "[" element_index "]")*
+conversion        = "s" | "r" | "a"
 ```
 
-The *field name* may be either a decimal number or a keyword.
-A number is interpreted as the index of a positional argument;
-a keyword specifies the value of a keyword argument.
-If all the numeric field names form the sequence 0, 1, 2, and so on,
-they may be omitted and those values will be implied; however,
-the explicit and implicit forms may not be mixed.
+The initial `arg_name` selects a positional argument by decimal index or a
+keyword argument by name. A following `.name` reads an attribute, and `[key]`
+reads an indexed or mapped element. Decimal element keys are integers; other
+keys are strings written without quotes. Sequential positional indices may be
+omitted, but automatic and explicit positional numbering may not be mixed.
 
-The *conversion* specifies how to convert an argument value `x` to a
-string. It may be either `!r`, which uses `repr(x)`, or `!s`, which emits a
-string argument without quotes and otherwise also uses `repr(x)`. The latter is
-the default. Consequently, bytes retain their `b` prefix for all three forms,
-consistently with `str(bytes_value)`.
-
-The *format specifier*, after a colon, specifies field width,
-alignment, padding, and numeric precision.
-Currently it must be empty, but it is reserved for future use.
+The `!s`, `!r`, and `!a` conversions apply `str`, `repr`, or an ASCII-escaped
+`repr` before formatting. A format specification may contain one level of
+nested replacement fields, allowing width and precision to be supplied by
+arguments.
 
 ```python
-"a{x}b{y}c{}".format(1, x=2, y=3)               # "a2b3c1"
-"a{}b{}c".format(1, 2)                          # "a1b2c"
-"({1}, {0})".format("zero", "one")              # "(one, zero)"
-"Is {0!r} {0!s}?".format('heterological')       # 'Is "heterological" heterological?'
-"{}".format(b"x")                               # 'b"x"'
+"{user.name}: {scores[1]}".format(
+    user=struct(name="Ada"),
+    scores=[7, 9],
+)                                               # "Ada: 9"
+"{0:{width}.{precision}f}".format(
+    12.3456,
+    width=8,
+    precision=2,
+)                                               # "   12.35"
+```
+
+<a id='format-specification-mini-language'></a>
+#### Format specification mini-language
+
+The `format` built-in and each `str.format` replacement field use the same
+standard format specification:
+
+```text
+[[fill]align][sign][z][#][0][width][grouping][.precision[grouping]][type]
+```
+
+`fill` is one Unicode code point. Alignment may be `<` (left), `>` (right),
+`^` (center), or `=` (padding after a numeric sign and base prefix). The sign
+option is `+`, `-`, or a space. The `z` option removes a negative sign from a
+floating-point value that rounds to zero. The `#` option selects alternate
+numeric form, and a leading `0` requests sign-aware zero padding.
+
+A `,` grouping option groups decimal integer and floating-point digits in
+threes. `_` also groups decimal digits in threes and groups binary, octal, and
+hexadecimal integer digits in fours. A grouping option after the precision
+groups fractional digits from the decimal point. Width and string precision
+count UTF-8 code points rather than bytes.
+
+The supported presentation types are:
+
+```text
+string    s (default)
+integer   b, c, d (default), n, o, x, X
+float     e, E, f, F, g, G, n, %
+```
+
+Integers also accept floating-point presentation types. Boolean values use
+`True` or `False` with an empty specification and integer formatting otherwise.
+The locale-aware Python `n` type is locale-neutral in Starlark and behaves as
+`d` for integers or `g` for floats. Values other than strings, integers,
+floats, and booleans accept only an empty format specification.
+
+```python
+"{:<8s}".format("hi")                    # "hi      "
+"{:#06x}".format(42)                     # "0x002a"
+"{:+010.2f}".format(12.3456)             # "+000012.35"
+"{:.1%}".format(0.125)                   # "12.5%"
+```
+
+<a id='string·format_map'></a>
+### string·format_map
+
+`S.format_map(mapping)` is equivalent to `S.format(**mapping)` but reads named
+fields directly from the supplied mapping. Positional fields are not allowed.
+Field traversal, conversions, nested fields, and format specifications otherwise
+have the same behavior as `str.format`.
+
+```python
+"{name} has {count:d}".format_map({
+    "name": "Ada",
+    "count": 3,
+})                                               # "Ada has 3"
 ```
 
 <a id='string·index'></a>
