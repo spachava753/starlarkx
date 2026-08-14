@@ -94,6 +94,7 @@ before resolving any of them.
 | Values / Bytes literals | `OPEN` | - | - | - | - |
 | Values / Bytes indexing/iteration | `OPEN` | - | - | - | - |
 | Values / One-argument `str(bytes)` | `PYTHON` | `DEFAULT` | `YES` | Return the same text as `repr(bytes)`, without implicitly decoding the byte sequence. | Match Python's object-to-string conversion while leaving exact representation spelling to the separate representations decision. |
+| Values / Bytes decode | `PYTHON` | `DEFAULT` | `PARTIAL` | Match Python's `bytes.decode` signature, registered codec and alias behavior, error handlers, and decoded text results. | Provide Python's explicit bytes-to-text conversion path, beginning with UTF-8 while retaining the full Python behavior as the target. |
 | Values / Other bytes/text conversion | `OPEN` | - | - | - | - |
 | Values / Float NaN | `OPEN` | - | - | - | - |
 | Values / Float overflow parsing | `OPEN` | - | - | - | - |
@@ -229,7 +230,8 @@ module definitions. They are not incidental parser gaps.
 | Bytes literals | Go Starlark accepts non-ASCII source text and `\u`/`\U` escapes in `b"..."`, encoding them as UTF-8. | Python bytes literals permit only ASCII source characters and do not interpret Unicode escapes as code points. | Divergence |
 | Bytes indexing/iteration | `b[i]` returns a one-byte `bytes`; bytes are not directly iterable, and `.elems()` yields integer bytes. | `b[i]` returns an `int`, and bytes iterate directly as integers. | Divergence |
 | One-argument `str(bytes)` | Returns the same stable Starlark bytes representation as `repr(bytes)`, including the `b` prefix and escaped non-text bytes. | Also returns the bytes representation; its exact quote selection differs as described under representations. | Aligned modulo representation spelling |
-| Other bytes/text conversion | `bytes(string_value)` UTF-8-encodes/transcodes, while `str` has no encoding or error-policy parameters and bytes expose no `decode` method. | Text-to-bytes and bytes-to-text conversion require an explicit encoding through constructor parameters or `encode`/`decode` methods. | Divergence / restriction |
+| Bytes decode | `bytes.decode(encoding="utf-8", errors="strict")` accepts Python's positional and keyword forms and implements the UTF-8 codec aliases with `strict`, `ignore`, and `replace`. Other codecs and error handlers are not yet supported. | Decodes through the registered codec and error-handler registries, with UTF-8 as the default codec and `strict` as the default handler. | Restriction |
+| Other bytes/text conversion | `bytes(string_value)` UTF-8-encodes/transcodes, while `str` has no encoding or error-policy parameters and strings expose no `encode` method. | Text-to-bytes and bytes-to-text conversion support explicit encodings through constructor parameters and `encode`/`decode` methods. | Divergence / restriction |
 | Float NaN | This implementation imposes a total order: all NaNs compare equal and greater than `+inf`; distinct NaNs collapse to one dictionary key. | NaN is unequal to itself and all ordered comparisons with NaN are false; distinct NaN objects can coexist as dictionary keys. | Divergence |
 | Float overflow parsing | An overflowing float literal such as `1e1000` and `float("1e1000")` are errors. | Both evaluate to positive infinity on CPython. | Divergence |
 | Duplicate dictionary literals | Evaluating `{"a": 1, "a": 2}` is an error. | The last value wins. | Divergence |
@@ -362,8 +364,9 @@ Built-in type methods are also a subset rather than a compatibility layer:
   including `casefold`, `center`, `encode`, `expandtabs`, `isascii`,
   `isdecimal`, `isidentifier`, `isnumeric`, `isprintable`, `ljust`,
   `maketrans`, `rjust`, `swapcase`, `translate`, and `zfill`.
-- Bytes provide only `.elems()`; tuples, ranges, integers, and floats expose no
-  Python-style methods.
+- Bytes provide `.decode()` and `.elems()`. Decoding currently supports UTF-8;
+  the other Python bytes methods are absent. Tuples, ranges, integers, and
+  floats expose no Python-style methods.
 
 This repository bundles Go modules for JSON, math, time, and protocol buffers,
 but module availability is selected by the embedding application. They are not

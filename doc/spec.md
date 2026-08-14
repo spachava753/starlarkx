@@ -645,8 +645,9 @@ byte value. They are true if non-empty and false if empty. Like strings, they
 are not directly iterable. The `elems` method returns an iterable view of their
 integer byte values.
 
-A bytes value has one method:
+A bytes value has two methods:
 
+* [`decode`](#bytes·decode)
 * [`elems`](#bytes·elems)
 
 ### Lists
@@ -3943,6 +3944,34 @@ x = set([1, 2])
 x.update([2, 3], [4, 5])
 ```
 
+<a id='bytes·decode'></a>
+### bytes·decode
+
+`B.decode(encoding="utf-8", errors="strict")` decodes B and returns a string.
+Both parameters may be passed positionally or by name.
+
+The current implementation supports the UTF-8 codec and its common Python
+aliases, including `utf8`, `utf_8`, `u8`, `utf`, and `cp65001`; codec names are
+case-insensitive and use Python's separator normalization. Other codecs are
+dynamic errors.
+
+The `errors` parameter supports these Python handlers:
+
+* `strict` reports the invalid byte range and reason as a dynamic error.
+* `ignore` omits each invalid byte sequence.
+* `replace` substitutes U+FFFD for each invalid byte sequence.
+
+Invalid sequences use Python's maximal-subpart boundaries. As in Python, an
+unknown error-handler name is reported only if decoding encounters an error.
+
+```python
+b"hello".decode()                            # "hello"
+b"\xce\xa9".decode("utf-8")                  # "Ω"
+b"a\xffb".decode(errors="ignore")            # "ab"
+b"a\xffb".decode(errors="replace")           # "a\ufffdb"
+b"\xff".decode()                              # error: invalid start byte
+```
+
 <a id='bytes·elems'></a>
 ### bytes·elems
 
@@ -4560,7 +4589,7 @@ See [Starlark spec issue 20](https://github.com/bazelbuild/starlark/issues/20).
 * Strings have the additional methods `elem_ords`, `codepoint_ords`, and `codepoints`.
 * The `chr` and `ord` built-in functions are supported.
 * The `bytes` type, `b"..."` and `rb"..."` literals, `bytes` built-in, and
-  `bytes.elems` method are supported.
+  `bytes.decode` and `bytes.elems` methods are supported.
 * The `set` built-in function is provided. It is enabled by the legacy API and
   command; explicit `FileOptions` callers use `Set: true`.
 * `set & set` and `set | set` compute set intersection and union, respectively.

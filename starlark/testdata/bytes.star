@@ -19,6 +19,29 @@ assert.fails(lambda: bytes([b"a"]),
              "at index 0, got bytes, want int")
 assert.fails(lambda: bytes(1), "want string, bytes, or iterable of ints")
 
+# bytes.decode -- Python-compatible UTF-8 decoding
+assert.eq(b"hello".decode(), "hello")
+assert.eq(b"\xce\xa9".decode(), "Ω")
+assert.eq(b"\xf0\x9f\x98\xbf".decode("utf-8"), "😿")
+assert.eq(b"hello".decode(encoding="UTF_8", errors="strict"), "hello")
+assert.eq(b"hello".decode("utf8"), "hello")
+assert.eq(b"hello".decode("UTF 8"), "hello")
+assert.eq(b"a\xffb".decode(errors="ignore"), "ab")
+assert.eq(b"a\xffb".decode(errors="replace"), "a\ufffdb")
+assert.eq(b"\xe1\x80A".decode(errors="replace"), "\ufffdA")
+assert.eq(b"\xe0\x80".decode(errors="replace"), "\ufffd\ufffd")
+assert.eq(b"\xf1\x80\x80".decode(errors="replace"), "\ufffd")
+assert.fails(lambda: b"\xff".decode(), "can't decode byte 0xff in position 0: invalid start byte")
+assert.fails(lambda: b"\xe1\x80".decode(), "can't decode bytes in position 0-1: unexpected end of data")
+assert.fails(lambda: b"\xf1\x80\x80A".decode(), "can't decode bytes in position 0-2: invalid continuation byte")
+assert.eq(b"valid".decode(errors="unknown"), "valid")
+assert.fails(lambda: b"\xff".decode(errors="unknown"), "unknown error handler name")
+assert.fails(lambda: b"valid".decode("latin-1"), "unknown encoding: latin-1")
+assert.fails(lambda: b"valid".decode("utf-8-sig"), "unknown encoding: utf-8-sig")
+assert.fails(lambda: b"valid".decode("utf.8"), "unknown encoding: utf.8")
+assert.fails(lambda: b"valid".decode(1), "for parameter encoding: got int, want string")
+assert.fails(lambda: b"valid".decode("utf-8", "strict", "extra"), "got 3 arguments, want at most 2")
+
 # literals
 assert.eq(b"hello, 世界", hello)
 assert.eq(b"goodbye", goodbye)
@@ -131,7 +154,7 @@ assert.fails(f, "bytes.*does not support.*assignment")
 
 # TODO(adonovan): the specification is not finalized in many areas:
 # - chr, ord functions
-# - encoding/decoding bytes to string.
+# - encoding strings as bytes with selectable codecs and error policies.
 # - methods: find, index, split, etc.
 #
 # Summary of string operations (put this in spec).

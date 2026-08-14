@@ -78,7 +78,8 @@ func init() {
 // https://github.com/google/starlark-go/blob/master/doc/spec.md#built-in-methods
 var (
 	bytesMethods = map[string]*Builtin{
-		"elems": NewBuiltin("elems", bytes_elems),
+		"decode": NewBuiltin("decode", bytes_decode),
+		"elems":  NewBuiltin("elems", bytes_elems),
 	}
 
 	dictMethods = map[string]*Builtin{
@@ -1509,6 +1510,125 @@ func string_iterable(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, 
 	} else {
 		return stringElems{s, ords}, nil
 	}
+}
+
+// bytes_decode decodes bytes using the supported subset of Python codecs.
+func bytes_decode(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	encoding, errors := "utf-8", "strict"
+	if err := UnpackArgs(b.Name(), args, kwargs,
+		"encoding?", &encoding,
+		"errors?", &errors,
+	); err != nil {
+		return nil, err
+	}
+	if !isUTF8Encoding(encoding) {
+		return nil, nameErr(b, fmt.Sprintf("unknown encoding: %s", encoding))
+	}
+
+	source := string(b.Receiver().(Bytes))
+	if utf8.ValidString(source) {
+		// CPython resolves error handlers only when decoding encounters an error.
+		return String(source), nil
+	}
+
+	var out strings.Builder
+	out.Grow(len(source))
+	for pos := 0; pos < len(source); {
+		r, size := utf8.DecodeRuneInString(source[pos:])
+		if r != utf8.RuneError || size > 1 {
+			out.WriteString(source[pos : pos+size])
+			pos += size
+			continue
+		}
+
+		errorSize, reason := invalidUTF8Sequence(source[pos:])
+		switch errors {
+		case "strict":
+			if errorSize == 1 {
+				return nil, nameErr(b, fmt.Sprintf(
+					"'utf-8' codec can't decode byte 0x%02x in position %d: %s",
+					source[pos], pos, reason))
+			}
+			return nil, nameErr(b, fmt.Sprintf(
+				"'utf-8' codec can't decode bytes in position %d-%d: %s",
+				pos, pos+errorSize-1, reason))
+		case "ignore":
+		case "replace":
+			out.WriteRune(utf8.RuneError)
+		default:
+			return nil, nameErr(b, fmt.Sprintf("unknown error handler name '%s'", errors))
+		}
+		pos += errorSize
+	}
+	return String(out.String()), nil
+}
+
+func isUTF8Encoding(name string) bool {
+	var normalized strings.Builder
+	separator := false
+	for _, r := range name {
+		if r >= 'A' && r <= 'Z' {
+			r += 'a' - 'A'
+		}
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' {
+			if separator && normalized.Len() > 0 {
+				normalized.WriteByte('_')
+			}
+			normalized.WriteRune(r)
+			separator = false
+		} else {
+			separator = true
+		}
+	}
+
+	switch normalized.String() {
+	case "utf_8", "utf8", "u8", "utf", "cp65001", "utf8_ucs2", "utf8_ucs4":
+		return true
+	default:
+		return false
+	}
+}
+
+// invalidUTF8Sequence returns the maximal invalid prefix consumed by CPython's
+// UTF-8 decoder and its error reason. s must begin with invalid UTF-8.
+func invalidUTF8Sequence(s string) (size int, reason string) {
+	first := s[0]
+	expected := 0
+	secondMin, secondMax := byte(0x80), byte(0xbf)
+	switch {
+	case first >= 0xc2 && first <= 0xdf:
+		expected = 2
+	case first >= 0xe0 && first <= 0xef:
+		expected = 3
+		if first == 0xe0 {
+			secondMin = 0xa0
+		} else if first == 0xed {
+			secondMax = 0x9f
+		}
+	case first >= 0xf0 && first <= 0xf4:
+		expected = 4
+		if first == 0xf0 {
+			secondMin = 0x90
+		} else if first == 0xf4 {
+			secondMax = 0x8f
+		}
+	default:
+		return 1, "invalid start byte"
+	}
+
+	for i := 1; i < expected; i++ {
+		if i >= len(s) {
+			return len(s), "unexpected end of data"
+		}
+		min, max := byte(0x80), byte(0xbf)
+		if i == 1 {
+			min, max = secondMin, secondMax
+		}
+		if s[i] < min || s[i] > max {
+			return i, "invalid continuation byte"
+		}
+	}
+	panic("invalidUTF8Sequence called with valid UTF-8")
 }
 
 // bytes_elems returns an unspecified iterable value whose
