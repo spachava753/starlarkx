@@ -20,9 +20,9 @@ type hashtable struct {
 	table     []bucket  // len is zero or a power of two
 	bucket0   [1]bucket // inline allocation for small maps.
 	len       uint32
-	itercount uint32  // number of active iterators (ignored if frozen)
-	head      *entry  // insertion order doubly-linked list; may be nil
-	tailLink  **entry // address of nil link at end of list (perhaps &head)
+	itercount uint32 // number of active iterators (ignored if frozen)
+	head      *entry // first entry in insertion order; may be nil
+	tail      *entry // last entry in insertion order; may be nil
 	frozen    bool
 
 	_ noCopy // triggers vet copylock check on this type.
@@ -45,8 +45,7 @@ type bucket struct {
 type entry struct {
 	hash       uint32 // nonzero => in use
 	key, value Value
-	next       *entry  // insertion order doubly-linked list; may be nil
-	prevLink   **entry // address of link to this entry (perhaps &head)
+	next, prev *entry // insertion order doubly-linked list
 }
 
 func (ht *hashtable) init(size int) {
@@ -62,7 +61,6 @@ func (ht *hashtable) init(size int) {
 	} else {
 		ht.table = make([]bucket, nb)
 	}
-	ht.tailLink = &ht.head
 }
 
 func (ht *hashtable) freeze() {
@@ -141,9 +139,13 @@ retry:
 	insert.value = v
 
 	// Append entry to doubly-linked list.
-	insert.prevLink = ht.tailLink
-	*ht.tailLink = insert
-	ht.tailLink = &insert.next
+	insert.prev = ht.tail
+	if ht.tail == nil {
+		ht.head = insert
+	} else {
+		ht.tail.next = insert
+	}
+	ht.tail = insert
 
 	ht.len++
 
@@ -166,7 +168,7 @@ func (ht *hashtable) grow() {
 	ht.table = make([]bucket, len(ht.table)<<1)
 	oldhead := ht.head
 	ht.head = nil
-	ht.tailLink = &ht.head
+	ht.tail = nil
 	ht.len = 0
 	for e := oldhead; e != nil; e = e.next {
 		ht.insert(e.key, e.value) // can't fail
@@ -274,6 +276,13 @@ func (ht *hashtable) first() (Value, bool) {
 	return None, false
 }
 
+func (ht *hashtable) last() (Value, bool) {
+	if ht.tail != nil {
+		return ht.tail.key, true
+	}
+	return None, false
+}
+
 func (ht *hashtable) keys() []Value {
 	keys := make([]Value, 0, ht.len)
 	for e := ht.head; e != nil; e = e.next {
@@ -306,11 +315,15 @@ func (ht *hashtable) delete(k Value) (v Value, found bool, err error) {
 					return nil, false, err
 				} else if eq {
 					// Remove e from doubly-linked list.
-					*e.prevLink = e.next
-					if e.next == nil {
-						ht.tailLink = e.prevLink // deletion of last entry
+					if e.prev == nil {
+						ht.head = e.next
 					} else {
-						e.next.prevLink = e.prevLink
+						e.prev.next = e.next
+					}
+					if e.next == nil {
+						ht.tail = e.prev
+					} else {
+						e.next.prev = e.prev
 					}
 
 					v := e.value
@@ -349,7 +362,7 @@ func (ht *hashtable) clear() error {
 		}
 	}
 	ht.head = nil
-	ht.tailLink = &ht.head
+	ht.tail = nil
 	ht.len = 0
 	return nil
 }
@@ -365,12 +378,8 @@ func (ht *hashtable) addAll(other *hashtable) error {
 
 // dump is provided as an aid to debugging.
 func (ht *hashtable) dump() {
-	fmt.Fprintf(os.Stderr, "hashtable %p len=%d head=%p tailLink=%p",
-		ht, ht.len, ht.head, ht.tailLink)
-	if ht.tailLink != nil {
-		fmt.Fprintf(os.Stderr, " *tailLink=%p", *ht.tailLink)
-	}
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprintf(os.Stderr, "hashtable %p len=%d head=%p tail=%p\n",
+		ht, ht.len, ht.head, ht.tail)
 	for j := range ht.table {
 		fmt.Fprintf(os.Stderr, "bucket chain %d\n", j)
 		for p := &ht.table[j]; p != nil; p = p.next {
@@ -379,12 +388,7 @@ func (ht *hashtable) dump() {
 				e := &p.entries[i]
 				fmt.Fprintf(os.Stderr, "\tentry %d @ %p hash=%d key=%v value=%v\n",
 					i, e, e.hash, e.key, e.value)
-				fmt.Fprintf(os.Stderr, "\t\tnext=%p &next=%p prev=%p",
-					e.next, &e.next, e.prevLink)
-				if e.prevLink != nil {
-					fmt.Fprintf(os.Stderr, " *prev=%p", *e.prevLink)
-				}
-				fmt.Fprintln(os.Stderr)
+				fmt.Fprintf(os.Stderr, "\t\tprev=%p next=%p\n", e.prev, e.next)
 			}
 		}
 	}

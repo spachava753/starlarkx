@@ -29,9 +29,16 @@ assert.eq(len(x6), 0)
 
 # dict.popitem
 x7 = {"a": 1, "b": 2}
-assert.eq([x7.popitem(), x7.popitem()], [("a", 1), ("b", 2)])
+assert.eq([x7.popitem(), x7.popitem()], [("b", 2), ("a", 1)])
 assert.fails(x7.popitem, "empty dict")
 assert.eq(len(x7), 0)
+
+# Replacing a value preserves its position; reinserting a removed key does not.
+x7_order = {"a": 1, "b": 2}
+x7_order["a"] = 3
+assert.eq(x7_order.popitem(), ("b", 2))
+x7_order["b"] = 4
+assert.eq([x7_order.popitem(), x7_order.popitem()], [("b", 4), ("a", 3)])
 
 # dict.keys, dict.values
 x8 = {"a": 1, "b": 2}

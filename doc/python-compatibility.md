@@ -101,7 +101,7 @@ before resolving any of them.
 | Values / Mutation while iterating | `OPEN` | - | - | - | - |
 | Values / Frozen values | `OPEN` | - | - | - | - |
 | Values / Set order | `OPEN` | - | - | - | - |
-| Values / Dictionary `popitem` | `PYTHON` | `DEFAULT` | `PARTIAL` | Remove and return the most recently inserted dictionary item, using Python's LIFO behavior. | Match modern Python's deterministic dictionary API and expected stack-like `popitem` semantics. |
+| Values / Dictionary `popitem` | `PYTHON` | `DEFAULT` | `YES` | Remove and return the most recently inserted dictionary item, using Python's LIFO behavior. | Match modern Python's deterministic dictionary API and expected stack-like `popitem` semantics. |
 | Values / Dictionary methods | `OPEN` | - | - | - | - |
 | Values / Eager sequence built-ins | `OPEN` | - | - | - | - |
 | Values / Range hashability | `OPEN` | - | - | - | - |
@@ -236,7 +236,7 @@ module definitions. They are not incidental parser gaps.
 | Mutation while iterating | Any mutation of the iterated list, dictionary, or set is a dynamic error. Deeply reachable values may still be mutated. | List mutation is allowed (though often hazardous); dictionary value replacement is allowed when size is unchanged; size-changing dictionary/set mutation errors. | Divergence |
 | Frozen values | A frozen list/dict/set remains unhashable and the original object cannot be thawed. A program may still construct a mutable shallow copy. | Python has separate mutable and immutable types such as `set`/`frozenset`; ordinary containers do not become frozen implicitly. | Divergence / omission |
 | Set order | Sets iterate in insertion order; set operations preserve defined operand order; `pop()` removes the first inserted element. | Set iteration and `pop()` order are intentionally unspecified. | Divergence |
-| Dictionary `popitem` | Removes the first inserted item (FIFO). | Removes the last inserted item (LIFO). | Divergence |
+| Dictionary `popitem` | Removes and returns the most recently inserted item (LIFO). Empty, frozen, or actively iterated dictionaries cannot be popped. | Removes and returns the most recently inserted item (LIFO), raising `KeyError` when empty. | Aligned ordering / runtime restriction |
 | Dictionary methods | `keys()`, `values()`, and `items()` return new lists. | They return dynamic view objects. | Divergence |
 | Eager sequence built-ins | `enumerate`, `zip`, and `reversed` return new lists. | They return lazy iterator objects. | Divergence |
 | Range hashability | Equal `range` values compare equal but are unhashable. | `range` values are hashable. | Divergence |

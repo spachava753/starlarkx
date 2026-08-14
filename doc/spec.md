@@ -3577,14 +3577,17 @@ x.pop("four")                           # error: missing key
 <a id='dict·popitem'></a>
 ### dict·popitem
 
-`D.popitem()` returns the first key/value pair, removing it from the dictionary.
+`D.popitem()` returns the most recently inserted key/value pair, removing it
+from the dictionary. Replacing the value of an existing key does not change its
+position, but removing and reinserting a key makes it the most recently inserted
+item.
 
 `popitem` fails if the dictionary is empty, frozen, or has active iterators.
 
 ```python
 x = {"one": 1, "two": 2}
-x.popitem()                             # ("one", 1)
 x.popitem()                             # ("two", 2)
+x.popitem()                             # ("one", 1)
 x.popitem()                             # error: empty dict
 ```
 

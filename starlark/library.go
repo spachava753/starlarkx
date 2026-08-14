@@ -1274,7 +1274,7 @@ func dict_popitem(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 		return nil, err
 	}
 	recv := b.Receiver().(*Dict)
-	k, ok := recv.ht.first()
+	k, ok := recv.ht.last()
 	if !ok {
 		return nil, nameErr(b, "empty dict")
 	}
