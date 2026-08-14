@@ -153,6 +153,30 @@ assert.fails(lambda: min(1), "not iterable")
 assert.fails(lambda: min([]), "empty")
 assert.eq(min(5, -2, 1, 7, 3, key=lambda x: x*x), 1) # min absolute value
 assert.eq(min(5, -2, 1, 7, 3, key=lambda x: -x), 7) # min negated value
+assert.eq(min([5, -2, 1], key=None), -2)
+assert.eq(max([5, -2, 1], key=None), 5)
+assert.eq(min([], default=42), 42)
+assert.eq(max([], default=None), None)
+assert.eq(min([5, -2, 1], default=42), -2)
+assert.eq(max([5, -2, 1], default=42), 5)
+assert.eq(min(["first", "second"], key=lambda _: 0), "first")
+assert.eq(max(["first", "second"], key=lambda _: 0), "first")
+assert.fails(lambda: min(1, 2, default=0), "Cannot specify a default for min.*multiple positional arguments")
+assert.fails(lambda: min(1, 2, default=None), "Cannot specify a default for min.*multiple positional arguments")
+assert.fails(lambda: max(1, 2, default=0), "Cannot specify a default for max.*multiple positional arguments")
+
+minmax_key_calls = []
+def minmax_key(x):
+    minmax_key_calls.append(x)
+    return -x
+
+assert.eq(min([], default=42, key=minmax_key), 42)
+assert.eq(minmax_key_calls, [])
+assert.eq(min([1, 2], default=42, key=minmax_key), 2)
+assert.eq(minmax_key_calls, [1, 2])
+assert.eq(min([], default=42, key=0), 42)
+assert.fails(lambda: min([], key=0), "empty")
+assert.fails(lambda: min([1], key=0), "invalid call of non-function")
 
 # enumerate
 assert.eq(enumerate("abc".elems()), [(0, "a"), (1, "b"), (2, "c")])

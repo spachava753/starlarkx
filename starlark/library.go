@@ -703,9 +703,15 @@ func minmax(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	if len(args) == 0 {
 		return nil, fmt.Errorf("%s requires at least one positional argument", b.Name())
 	}
-	var keyFunc Callable
-	if err := UnpackArgs(b.Name(), nil, kwargs, "key?", &keyFunc); err != nil {
+	var keyFunc, defaultValue Value
+	if err := UnpackArgs(b.Name(), nil, kwargs,
+		"key??", &keyFunc,
+		"default?", &defaultValue,
+	); err != nil {
 		return nil, err
+	}
+	if len(args) > 1 && defaultValue != nil {
+		return nil, fmt.Errorf("Cannot specify a default for %s() with multiple positional arguments", b.Name())
 	}
 	var op syntax.Token
 	if b.Name() == "max" {
@@ -726,6 +732,9 @@ func minmax(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	defer iter.Done()
 	var extremum Value
 	if !iter.Next(&extremum) {
+		if defaultValue != nil {
+			return defaultValue, nil
+		}
 		return nil, nameErr(b, "argument is an empty sequence")
 	}
 

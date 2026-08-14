@@ -3265,31 +3265,41 @@ With no argument, `list()` returns a new empty list.
 
 ### max
 
-`max(x)` returns the greatest element in the iterable sequence x.
+`max(iterable)` returns the greatest element of `iterable`. With two or more
+positional arguments, `max(x, y, ...)` returns the greatest argument.
 
-It is an error if any element does not support ordered comparison,
-or if the sequence is empty.
+The optional keyword-only parameter `key` specifies a one-argument function
+applied to each candidate before comparison; `None` means candidates are
+compared directly. The optional keyword-only parameter `default` is permitted
+only in the single-iterable form. If the iterable is empty, `default` is
+returned unchanged and `key` is not called for it. Without `default`, an empty
+iterable is an error.
 
-The optional named parameter `key` specifies a function to be applied
-to each element prior to comparison.
+It is an error if candidate keys do not support ordered comparison. If multiple
+candidates have the greatest key, `max` returns the first one encountered.
 
 ```python
 max([3, 1, 4, 1, 5, 9])                         # 9
 max("two", "three", "four")                     # "two", the lexicographically greatest
 max("two", "three", "four", key=len)            # "three", the longest
+max([], default=None)                            # None
 ```
 
 ### min
 
-`min(x)` returns the least element in the iterable sequence x.
+`min` accepts the same iterable and variadic forms and the same keyword-only
+`key` and `default` parameters as `max`, but returns the candidate with the
+least key. If multiple candidates have the least key, it returns the first one
+encountered.
 
-It is an error if any element does not support ordered comparison,
-or if the sequence is empty.
+It is an error if candidate keys do not support ordered comparison, or if the
+single iterable is empty and `default` was not supplied.
 
 ```python
 min([3, 1, 4, 1, 5, 9])                         # 1
 min("two", "three", "four")                     # "four", the lexicographically least
 min("two", "three", "four", key=len)            # "two", the shortest
+min([], default=0)                               # 0
 ```
 
 
