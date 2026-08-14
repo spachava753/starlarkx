@@ -86,7 +86,7 @@ before resolving any of them.
 | Execution / `while` | `STARLARK` | `DEFAULT` | `YES` | Reject `while` unless an explicit dialect option enables it. | Preserve finite iteration as the default execution model. |
 | Execution / Nonlocal/global writes | `STARLARK` | `DEFAULT` | `YES` | Provide no `global` or `nonlocal` declarations; assignment binds in the current function while enclosing mutable values may still be changed. | Keep lexical assignment rules simple and make outer-scope mutation explicit through shared values. |
 | Execution / Module loading | `OPEN` | - | - | - | - |
-| Values / Booleans and numbers | `OPEN` | - | - | - | - |
+| Values / Booleans and numbers | `STARLARK` | `DEFAULT` | `YES` | Keep `bool` distinct from numeric types; require explicit `int` or `float` conversion before numeric use. | Preserve Starlark's type clarity rather than adopting Python's historical `bool`-as-`int` relationship. |
 | Values / Text model | `OPEN` | - | - | - | - |
 | Values / String iteration | `OPEN` | - | - | - | - |
 | Values / String offsets | `OPEN` | - | - | - | - |
@@ -421,10 +421,10 @@ A practical extension plan can group work by architectural depth:
 1. **Enable existing behavior**: expose `While`, `TopLevelControl`,
    `GlobalReassign`, and `Recursion` through an explicit Python-compatible
    option preset.
-2. **Change local semantics**: Boolean numeric compatibility, Unicode string
-   indexing/iteration, bytes behavior, NaN semantics, FIFO/LIFO behavior,
-   eager/lazy return types, builtin signatures, and argument evaluation order.
-   These changes are localized conceptually but can break Starlark code.
+2. **Change local semantics**: Unicode string indexing/iteration, bytes
+   behavior, NaN semantics, eager/lazy return types, builtin signatures, and
+   argument evaluation order. These changes are localized conceptually but can
+   break Starlark code.
 3. **Extend parser and evaluator**: chained comparisons, literal
    concatenation, numeric separators, richer unpacking, slice assignment,
    loop `else`, f-strings, and additional comprehension forms.
