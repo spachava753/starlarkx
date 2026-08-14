@@ -3,15 +3,15 @@
 // license that can be found in the LICENSE file.
 
 // Package math provides basic constants and mathematical functions.
-package math // import "go.starlark.net/lib/math"
+package math // import "github.com/spachava753/starlarkx/lib/math"
 
 import (
 	"errors"
 	"fmt"
 	"math"
 
-	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
+	"github.com/spachava753/starlarkx/starlark"
+	"github.com/spachava753/starlarkx/starlarkstruct"
 )
 
 // Module math is a Starlark module of math-related functions and constants.

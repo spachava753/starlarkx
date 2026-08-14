@@ -7,9 +7,9 @@ import (
 	"os"
 	"slices"
 
-	"go.starlark.net/internal/compile"
-	"go.starlark.net/internal/spell"
-	"go.starlark.net/syntax"
+	"github.com/spachava753/starlarkx/internal/compile"
+	"github.com/spachava753/starlarkx/internal/spell"
+	"github.com/spachava753/starlarkx/syntax"
 )
 
 const vmdebug = false // TODO(adonovan): use a bitfield of specific kinds of error.

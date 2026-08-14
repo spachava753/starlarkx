@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.starlark.net/internal/chunkedfile"
-	"go.starlark.net/resolve"
-	"go.starlark.net/starlarktest"
-	"go.starlark.net/syntax"
+	"github.com/spachava753/starlarkx/internal/chunkedfile"
+	"github.com/spachava753/starlarkx/resolve"
+	"github.com/spachava753/starlarkx/starlarktest"
+	"github.com/spachava753/starlarkx/syntax"
 )
 
 // A test may enable non-standard options by containing (e.g.) "option:recursion".

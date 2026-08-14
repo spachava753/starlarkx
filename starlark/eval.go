@@ -15,10 +15,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.starlark.net/internal/compile"
-	"go.starlark.net/internal/spell"
-	"go.starlark.net/resolve"
-	"go.starlark.net/syntax"
+	"github.com/spachava753/starlarkx/internal/compile"
+	"github.com/spachava753/starlarkx/internal/spell"
+	"github.com/spachava753/starlarkx/resolve"
+	"github.com/spachava753/starlarkx/syntax"
 )
 
 // A Thread contains the state of a Starlark thread,
@@ -447,7 +447,7 @@ func (prog *Program) Init(thread *Thread, predeclared StringDict) (StringDict, e
 // syntactically a File, manipulates the same set of module globals,
 // which are not frozen after execution.
 //
-// This function is intended to support only go.starlark.net/repl.
+// This function is intended to support only github.com/spachava753/starlarkx/repl.
 // Its API stability is not guaranteed.
 func ExecREPLChunk(f *syntax.File, thread *Thread, globals StringDict) error {
 	var predeclared StringDict
@@ -1506,7 +1506,7 @@ func findParam(params []compile.Binding, name string) int {
 	return -1
 }
 
-// https://github.com/google/starlark-go/blob/master/doc/spec.md#string-interpolation
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string-interpolation
 func is[T any](x any) bool {
 	_, ok := x.(T)
 	return ok

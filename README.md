@@ -1,15 +1,16 @@
 
-<!-- This file is the project homepage for go.starlark.net -->
+<!-- This file is the project homepage for github.com/spachava753/starlarkx -->
 
-# Starlark in Go
+# StarlarkX
 
-[![Go Tests](https://github.com/google/starlark-go/actions/workflows/tests.yml/badge.svg)](https://github.com/google/starlark-go/actions/workflows/tests.yml)
-[![Go Reference](https://pkg.go.dev/badge/go.starlark.net/starlark.svg)](https://pkg.go.dev/go.starlark.net/starlark)
+[![Go Tests](https://github.com/spachava753/starlarkx/actions/workflows/tests.yml/badge.svg)](https://github.com/spachava753/starlarkx/actions/workflows/tests.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/spachava753/starlarkx/starlark.svg)](https://pkg.go.dev/github.com/spachava753/starlarkx/starlark)
 
-This is the home of the _Starlark in Go_ project.
-Starlark in Go is an interpreter for Starlark, implemented in Go.
-Starlark was formerly known as Skylark.
-The import path for the Go package is `"go.starlark.net/starlark"`.
+StarlarkX is an extended fork of the Go implementation of Starlark. It
+selectively adds expected Python behavior while preserving deliberate Starlark
+semantics where they remain preferable. The module path is
+`"github.com/spachava753/starlarkx"`, and the core package import path is
+`"github.com/spachava753/starlarkx/starlark"`.
 
 Starlark is a dialect of Python intended for use as a configuration language.
 Like Python, it is an untyped dynamic language with high-level data
@@ -42,11 +43,11 @@ languages and compilers.
 
 * About the Go implementation: [doc/impl.md](doc/impl.md)
 
-* API documentation: [pkg.go.dev/go.starlark.net/starlark](https://pkg.go.dev/go.starlark.net/starlark)
+* API documentation: [pkg.go.dev/github.com/spachava753/starlarkx/starlark](https://pkg.go.dev/github.com/spachava753/starlarkx/starlark)
 
 * Mailing list: [starlark-go](https://groups.google.com/forum/#!forum/starlark-go)
 
-* Issue tracker: [https://github.com/google/starlark-go/issues](https://github.com/google/starlark-go/issues)
+* Issue tracker: [https://github.com/spachava753/starlarkx/issues](https://github.com/spachava753/starlarkx/issues)
 
 ### Getting started
 
@@ -55,7 +56,7 @@ Build the code:
 ```shell
 # check out the code and dependencies,
 # and install interpreter in $GOPATH/bin
-$ go install go.starlark.net/cmd/starlark@latest
+$ go install github.com/spachava753/starlarkx/cmd/starlark@latest
 ```
 
 Run the interpreter:
@@ -96,7 +97,7 @@ When you have finished, type `Ctrl-D` to close the REPL's input stream.
 Embed the interpreter in your Go program:
 
 ```go
-import "go.starlark.net/starlark"
+import "github.com/spachava753/starlarkx/starlark"
 
 // Execute Starlark program in a file.
 thread := &starlark.Thread{Name: "my thread"}
@@ -183,6 +184,6 @@ Starlark in Go is Copyright (c) 2018 The Bazel Authors.
 All rights reserved.
 
 It is provided under a 3-clause BSD license:
-[LICENSE](https://github.com/google/starlark-go/blob/master/LICENSE).
+[LICENSE](https://github.com/spachava753/starlarkx/blob/master/LICENSE).
 
 Starlark in Go is not an official Google product.

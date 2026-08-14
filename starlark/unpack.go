@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"go.starlark.net/internal/spell"
+	"github.com/spachava753/starlarkx/internal/spell"
 )
 
 // An Unpacker defines custom argument unpacking behavior.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.starlark.net/internal/compile"
+	"github.com/spachava753/starlarkx/internal/compile"
 )
 
 // TestOpcodeNames checks that every opcode has a name, including the

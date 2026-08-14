@@ -105,9 +105,9 @@ import (
 	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/dynamicpb"
 
-	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
-	"go.starlark.net/syntax"
+	"github.com/spachava753/starlarkx/starlark"
+	"github.com/spachava753/starlarkx/starlarkstruct"
+	"github.com/spachava753/starlarkx/syntax"
 )
 
 // SetPool associates with the specified Starlark thread the

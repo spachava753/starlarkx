@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package starlarkjson is an alias for go.starlark.net/lib/json to provide
+// Package starlarkjson is an alias for github.com/spachava753/starlarkx/lib/json to provide
 // backwards compatibility
 //
-// Deprecated: use go.starlark.net/lib/json instead
-package starlarkjson // import "go.starlark.net/starlarkjson"
+// Deprecated: use github.com/spachava753/starlarkx/lib/json instead
+package starlarkjson // import "github.com/spachava753/starlarkx/starlarkjson"
 
 import (
-	"go.starlark.net/lib/json"
+	"github.com/spachava753/starlarkx/lib/json"
 )
 
 // Module is an alias of json.Module for backwards import compatibility

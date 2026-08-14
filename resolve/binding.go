@@ -4,7 +4,7 @@
 
 package resolve
 
-import "go.starlark.net/syntax"
+import "github.com/spachava753/starlarkx/syntax"
 
 // This file defines resolver data types saved in the syntax tree.
 // We cannot guarantee API stability for these types

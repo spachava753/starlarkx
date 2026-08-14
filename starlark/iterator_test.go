@@ -18,7 +18,7 @@ import (
 	"reflect"
 	"testing"
 
-	. "go.starlark.net/starlark"
+	. "github.com/spachava753/starlarkx/starlark"
 )
 
 func TestTupleElements(t *testing.T) {

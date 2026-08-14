@@ -950,7 +950,7 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 }
 
 func (sc *scanner) scanNumber(val *tokenValue, c rune) Token {
-	// https://github.com/google/starlark-go/blob/master/doc/spec.md#lexical-elements
+	// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#lexical-elements
 	//
 	// Python features not supported:
 	// - integer literals of >64 bits of precision

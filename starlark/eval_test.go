@@ -17,15 +17,15 @@ import (
 	"strings"
 	"testing"
 
-	"go.starlark.net/internal/chunkedfile"
-	"go.starlark.net/lib/json"
-	starlarkmath "go.starlark.net/lib/math"
-	starlarkproto "go.starlark.net/lib/proto"
-	"go.starlark.net/lib/time"
-	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
-	"go.starlark.net/starlarktest"
-	"go.starlark.net/syntax"
+	"github.com/spachava753/starlarkx/internal/chunkedfile"
+	"github.com/spachava753/starlarkx/lib/json"
+	starlarkmath "github.com/spachava753/starlarkx/lib/math"
+	starlarkproto "github.com/spachava753/starlarkx/lib/proto"
+	"github.com/spachava753/starlarkx/lib/time"
+	"github.com/spachava753/starlarkx/starlark"
+	"github.com/spachava753/starlarkx/starlarkstruct"
+	"github.com/spachava753/starlarkx/starlarktest"
+	"github.com/spachava753/starlarkx/syntax"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 
@@ -1092,7 +1092,7 @@ func TestDeps(t *testing.T) {
 		slash := strings.IndexByte(pkg, '/')
 		dot := strings.IndexByte(pkg, '.')
 		if 0 < dot && dot < slash {
-			if strings.HasPrefix(pkg, "go.starlark.net/") ||
+			if strings.HasPrefix(pkg, "github.com/spachava753/starlarkx/") ||
 				strings.HasPrefix(pkg, "golang.org/x/sys/") {
 				continue // permitted dependencies
 			}

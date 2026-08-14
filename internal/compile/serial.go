@@ -89,7 +89,7 @@ import (
 	"slices"
 	"unsafe"
 
-	"go.starlark.net/syntax"
+	"github.com/spachava753/starlarkx/syntax"
 )
 
 const magic = "!sky"

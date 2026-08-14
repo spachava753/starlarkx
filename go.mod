@@ -1,4 +1,4 @@
-module go.starlark.net
+module github.com/spachava753/starlarkx
 
 go 1.25.0
 

@@ -3,7 +3,7 @@ package starlarkstruct
 import (
 	"fmt"
 
-	"go.starlark.net/starlark"
+	"github.com/spachava753/starlarkx/starlark"
 )
 
 // A Module is a named collection of values,

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.starlark.net/starlark"
+	"github.com/spachava753/starlarkx/starlark"
 )
 
 // TestProfile is a simple integration test that the profiler
