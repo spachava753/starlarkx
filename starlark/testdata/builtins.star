@@ -73,6 +73,34 @@ assert.eq(sorted(pairs, key=lambda x: x[0]),
            (4, 0), (4, 2)])
 assert.fails(lambda: sorted(1), 'sorted: for parameter iterable: got int, want iterable')
 
+# sum
+assert.eq(sum([]), 0)
+assert.eq(sum([1, 2, 3]), 6)
+assert.eq(sum(range(2, 8)), 27)
+assert.eq(sum([1 << 100, 2]), (1 << 100) + 2)
+assert.eq(sum([1, 0.5, 2]), 3.5)
+assert.eq(sum([1, 2], 10), 13)
+assert.eq(sum([1, 2], start=10), 13)
+assert.eq(sum([], False), False)
+assert.eq(sum([[1], [2], [3]], []), [1, 2, 3])
+assert.eq(sum([(1,), (2,), (3,)], ()), (1, 2, 3))
+
+sum_start = []
+assert.eq(sum([[1], [2]], sum_start), [1, 2])
+assert.eq(sum_start, [])
+
+# sum uses ordinary Starlark addition rather than CPython's compensated float path.
+assert.eq(sum([1.0, 1e100, 1.0, -1e100]), 0.0)
+assert.fails(sum, "sum: requires at least one positional argument")
+assert.fails(lambda: sum(iterable=[1]), "sum: requires at least one positional argument")
+assert.fails(lambda: sum(1), "sum: for parameter iterable: got int, want iterable")
+assert.fails(lambda: sum([1], 0, 2), "sum: got 3 arguments, want at most 2")
+assert.fails(lambda: sum([1], 0, start=2), 'sum: got multiple values for keyword argument "start"')
+assert.fails(lambda: sum([1], unknown=2), 'sum: unexpected keyword argument "unknown"')
+assert.fails(lambda: sum([], ""), "sum: can't sum strings")
+assert.fails(lambda: sum([], b""), "sum: can't sum bytes")
+assert.fails(lambda: sum([True]), "unknown binary op: int \\+ bool")
+
 # reversed
 assert.eq(reversed([1, 144, 81, 16]), [16, 81, 144, 1])
 

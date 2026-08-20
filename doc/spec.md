@@ -3474,6 +3474,26 @@ str(b"\xff")                    # 'b"\\xff"'
 str([1, "x"])                   # '[1, "x"]'
 ```
 
+### sum
+
+`sum(iterable, /, start=0)` returns `start` plus the elements of `iterable`.
+The `iterable` argument is positional-only. `start` may be supplied positionally
+or by name and defaults to the integer zero. If the iterable is empty, the
+result is `start` itself.
+
+Strings and bytes are not accepted as `start`, even when the iterable is empty.
+For a non-empty iterable, `sum` applies the ordinary Starlark `+` operation from
+left to right. It performs no specialized or compensated numeric summation, so
+Starlark's usual rules for booleans, mixed numeric values, sequences, and
+application-defined values continue to apply.
+
+```python
+sum([1, 2, 3])                         # 6
+sum(range(4), start=10)                # 16
+sum([[1], [2], [3]], [])               # [1, 2, 3]
+sum([(1,), (2,), (3,)], ())           # (1, 2, 3)
+```
+
 ### tuple
 
 `tuple(x)` returns a tuple containing the elements of the iterable x.

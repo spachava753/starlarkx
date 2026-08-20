@@ -68,6 +68,7 @@ func init() {
 		"set":       NewBuiltin("set", set),
 		"sorted":    NewBuiltin("sorted", sorted),
 		"str":       NewBuiltin("str", str),
+		"sum":       NewBuiltin("sum", sum),
 		"tuple":     NewBuiltin("tuple", tuple),
 		"type":      NewBuiltin("type", type_),
 		"zip":       NewBuiltin("zip", zip),
@@ -1126,6 +1127,45 @@ func utf8Transcode(s string) string {
 		out.WriteRune(r)
 	}
 	return out.String()
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#sum
+func sum(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if len(args) == 0 {
+		return nil, nameErr(b, "requires at least one positional argument")
+	}
+	if len(args) > 2 {
+		return nil, fmt.Errorf("%s: got %d arguments, want at most 2", b.Name(), len(args))
+	}
+
+	var iterable Iterable
+	if err := unpackArgNoEscape(args[0], &iterable); err != nil {
+		return nil, fmt.Errorf("%s: for parameter iterable: %v", b.Name(), err)
+	}
+
+	var start Value = zero
+	if err := UnpackArgs(b.Name(), args[1:], kwargs, "start?", &start); err != nil {
+		return nil, err
+	}
+	switch start.(type) {
+	case String:
+		return nil, nameErr(b, "can't sum strings")
+	case Bytes:
+		return nil, nameErr(b, "can't sum bytes")
+	}
+
+	total := start
+	iter := iterable.Iterate()
+	defer iter.Done()
+	var item Value
+	for iter.Next(&item) {
+		var err error
+		total, err = Binary(syntax.PLUS, total, item)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return total, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#tuple

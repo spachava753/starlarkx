@@ -157,7 +157,8 @@ before resolving any of them.
 | Expressions / Python object protocol | `OPEN` | - | - | - | - |
 | Expressions / Runtime introspection objects | `OPEN` | - | - | - | - |
 | Expressions / Immutable collection counterparts | `OPEN` | - | - | - | - |
-| Builtins / Missing Python built-ins | `OPEN` | - | - | - | - |
+| Builtins / `sum` | `STARLARKX` | `DEFAULT` | `YES` | Provide `sum(iterable, /, start=0)`, accepting `start` positionally or by name, rejecting string and bytes starts, returning `start` unchanged for an empty iterable, and otherwise applying ordinary StarlarkX `+` from left to right. | Provide Python's familiar accumulation interface while preserving StarlarkX boolean, arithmetic, sequence, iteration, and host-defined value semantics. |
+| Builtins / Other missing Python built-ins | `OPEN` | - | - | - | - |
 | Methods / List method surface | `OPEN` | - | - | - | - |
 | Methods / Dictionary method surface | `OPEN` | - | - | - | - |
 | Methods / Set method surface | `OPEN` | - | - | - | - |
@@ -257,6 +258,7 @@ module definitions. They are not incidental parser gaps.
 | Built-in keyword support | Unless documented otherwise, Starlark built-ins accept positional arguments only. Boolean parameters generally require an actual `bool`, not merely a truthy value. | Many Python built-ins have keyword-only parameters and commonly use truth testing where specified. | Restriction / divergence |
 | `sorted` signature | `key` and `reverse` may be passed positionally, and an explicit `None` is not accepted as the key. | Both options are keyword-only, and `None` is the default key. | Divergence |
 | `min`/`max` | Support Python's iterable and variadic forms, keyword-only `key=None`, and an iterable-only `default`. The first encountered item wins ties. Values still follow Starlark's iteration and comparison rules. | Support the same call forms and selection behavior over Python's value and iterator model. | Aligned call contract / value-model divergence |
+| `sum` | Supports `sum(iterable, /, start=0)`, with `start` accepted positionally or by name. String and bytes starts are rejected, an empty iterable returns `start` unchanged, and other values are combined from left to right using ordinary StarlarkX `+`. Booleans remain non-numeric and floats receive no compensated special case. | Supports the same call forms, empty behavior, and string/bytes rejection over Python values. CPython uses specialized integer, float, and complex paths, including compensated float and complex summation. | Aligned call contract / value-model and numeric-algorithm divergence |
 | `print` | Converts each object with `str`, joins with keyword-only `sep`, and appends keyword-only `end`; either formatting option accepts `None` for its default. The complete text is delivered to the host's thread callback, and `file` and `flush` are not supported. | Uses the same textual formatting options, additionally supports `file` and `flush`, and defaults to standard output. | Restriction / divergence |
 | Text percent formatting | Supports mapping keys, `#0- +` flags, fixed or `*` width and precision, ignored `h`/`l`/`L` modifiers, and `%diouxXeEfFgGcrsa` conversions with Python argument-consumption rules. Conversion protocols are limited to Starlark's available values, and bytes values do not act as format strings. | Supports the same text-string grammar and conversion behavior, plus user-defined numeric/string protocols; `bytes` has a related binary formatting operation. | Aligned for available text values / restriction |
 | Brace formatting (`str.format`, `str.format_map`, `format`) | Supports attribute and item field traversal, `!s`/`!r`/`!a`, one-level nested fields, and the standard format specification for strings, integers, floats, and booleans. The `n` presentation is locale-neutral, and other values accept only an empty specification. | Supports the same syntax through all three interfaces, with locale-aware `n`, complex numbers, and user-defined `__format__` protocols. | Aligned for available value types / restriction |
@@ -336,8 +338,8 @@ contains:
 ```text
 None True False
 abs all any bool bytes chr dict dir enumerate fail float format getattr hasattr
-hash int len list max min ord print range repr reversed set sorted str tuple type
-zip
+hash int len list max min ord print range repr reversed set sorted str sum tuple
+type zip
 ```
 
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
@@ -350,7 +352,7 @@ exceptions, and reflection are absent. The missing Python 3.14 built-ins include
 `exec`, `filter`, `frozenset`, `globals`, `help`, `hex`, `id`, `input`,
 `isinstance`, `issubclass`, `iter`, `locals`, `map`, `memoryview`, `next`,
 `object`, `oct`, `open`, `pow`, `property`, `round`, `setattr`, `slice`,
-`staticmethod`, `sum`, `super`, and `vars`.
+`staticmethod`, `super`, and `vars`.
 
 Built-in type methods are also a subset rather than a compatibility layer:
 
