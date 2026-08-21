@@ -85,6 +85,7 @@ var (
 
 	dictMethods = map[string]*Builtin{
 		"clear":      NewBuiltin("clear", dict_clear),
+		"copy":       NewBuiltin("copy", dict_copy),
 		"get":        NewBuiltin("get", dict_get),
 		"items":      NewBuiltin("items", dict_items),
 		"keys":       NewBuiltin("keys", dict_keys),
@@ -1294,6 +1295,19 @@ func dict_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 		return nil, err
 	}
 	return None, b.Receiver().(*Dict).Clear()
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·copy
+func dict_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+
+	src := b.Receiver().(*Dict)
+	copy := new(Dict)
+	copy.ht.init(src.Len())
+	copy.ht.addAll(&src.ht) // can't fail: all keys are already hashed
+	return copy, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·items

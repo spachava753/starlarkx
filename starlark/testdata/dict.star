@@ -104,6 +104,30 @@ assert.true("a" not in x11)
 freeze(x11)
 assert.fails(x11.clear, "cannot clear frozen hash table")
 
+# dict.copy
+assert.eq({}.copy(), {})
+dict_copy_inner = [1]
+dict_copy_source = {"a": dict_copy_inner, "b": 2}
+dict_copy_result = dict_copy_source.copy()
+dict_copy_result["c"] = 3
+dict_copy_result["a"].append(4)
+assert.eq(dict_copy_source, {"a": [1, 4], "b": 2})
+assert.eq(dict_copy_result, {"a": [1, 4], "b": 2, "c": 3})
+assert.eq(dict_copy_result.keys(), ["a", "b", "c"])
+assert.fails(lambda: dict_copy_source.copy(1), "copy: got 1 arguments, want 0")
+assert.fails(lambda: dict_copy_source.copy(value=1), "copy: unexpected keyword arguments")
+
+frozen_dict_copy_source = {"inner": [1]}
+freeze(frozen_dict_copy_source)
+frozen_dict_copy_result = frozen_dict_copy_source.copy()
+frozen_dict_copy_result["new"] = 2
+assert.eq(frozen_dict_copy_source, {"inner": [1]})
+assert.eq(frozen_dict_copy_result, {"inner": [1], "new": 2})
+assert.fails(
+    lambda: frozen_dict_copy_result["inner"].append(3),
+    "cannot append to frozen list",
+)
+
 # dict.setdefault
 x12 = {"a": 1}
 assert.eq(x12.setdefault("a"), 1)

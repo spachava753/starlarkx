@@ -103,7 +103,7 @@ before resolving any of them.
 | Values / Frozen values | `OPEN` | - | - | - | - |
 | Values / Set order | `OPEN` | - | - | - | - |
 | Values / Dictionary `popitem` | `PYTHON` | `DEFAULT` | `YES` | Remove and return the most recently inserted dictionary item, using Python's LIFO behavior. | Match modern Python's deterministic dictionary API and expected stack-like `popitem` semantics. |
-| Values / Dictionary methods | `OPEN` | - | - | - | - |
+| Values / Dictionary views | `OPEN` | - | - | - | - |
 | Values / Eager sequence built-ins | `OPEN` | - | - | - | - |
 | Values / Range hashability | `OPEN` | - | - | - | - |
 | Values / Range membership | `OPEN` | - | - | - | - |
@@ -160,7 +160,8 @@ before resolving any of them.
 | Builtins / `sum` | `STARLARKX` | `DEFAULT` | `YES` | Provide `sum(iterable, /, start=0)`, accepting `start` positionally or by name, rejecting string and bytes starts, returning `start` unchanged for an empty iterable, and otherwise applying ordinary StarlarkX `+` from left to right. | Provide Python's familiar accumulation interface while preserving StarlarkX boolean, arithmetic, sequence, iteration, and host-defined value semantics. |
 | Builtins / Other missing Python built-ins | `OPEN` | - | - | - | - |
 | Methods / List method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`; make `copy` shallow, make in-place mutators return `None`, and make `sort` stable with keyword-only `key=None` and `reverse=False`, one key call per item, ordinary StarlarkX `<`, strict Boolean `reverse`, and replacement only after successful key evaluation and comparison. Mutators reject frozen lists and lists with active iterators. | Provide Python's familiar complete list method surface while preserving StarlarkX equality, ordering, call typing, freezing, and mutation-safety rules. |
-| Methods / Dictionary method surface | `OPEN` | - | - | - | - |
+| Methods / Dictionary `copy` | `STARLARKX` | `DEFAULT` | `YES` | Return a new mutable shallow dictionary copy with the source's insertion order and shared keys and values, whether the source dictionary is mutable or frozen. | Provide Python's familiar shallow-copy operation while preserving StarlarkX's frozen published values and enabling a mutable locally owned outer dictionary. |
+| Methods / Dictionary `fromkeys` | `OPEN` | - | - | - | - |
 | Methods / Set method surface | `OPEN` | - | - | - | - |
 | Methods / String method surface | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
@@ -241,7 +242,7 @@ module definitions. They are not incidental parser gaps.
 | List methods | Lists expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`. `copy` returns a mutable shallow copy. In-place mutators return `None` and reject frozen or actively iterated lists. `sort` is stable with keyword-only `key=None` and `reverse=False`, but uses strict Boolean typing, StarlarkX `<`, a mutation lock during key/comparison work, and an atomic element-sequence replacement. | Lists expose the same method names and core effects. They remain mutable, `sort` truth-tests `reverse`, and CPython may leave a list partially reordered after a comparison failure and makes it appear empty during sorting. | Aligned surface / value and mutation-model divergence |
 | Set order | Sets iterate in insertion order; set operations preserve defined operand order; `pop()` removes the first inserted element. | Set iteration and `pop()` order are intentionally unspecified. | Divergence |
 | Dictionary `popitem` | Removes and returns the most recently inserted item (LIFO). Empty, frozen, or actively iterated dictionaries cannot be popped. | Removes and returns the most recently inserted item (LIFO), raising `KeyError` when empty. | Aligned ordering / runtime restriction |
-| Dictionary methods | `keys()`, `values()`, and `items()` return new lists. | They return dynamic view objects. | Divergence |
+| Dictionary views | `keys()`, `values()`, and `items()` return new lists. | They return dynamic view objects. | Divergence |
 | Eager sequence built-ins | `enumerate`, `zip`, and `reversed` return new lists. | They return lazy iterator objects. | Divergence |
 | Range hashability | Equal `range` values compare equal but are unhashable. | `range` values are hashable. | Divergence |
 | Range membership | The left operand must be an `int` or finite `float`; floats are truncated toward zero, so `1.9 in range(3)` is true. Other types are errors. | Membership uses equality, so `1.9 in range(3)` is false and an unrelated type also produces false. | Divergence |
@@ -360,8 +361,9 @@ Built-in type methods are also a subset rather than a compatibility layer:
 - Lists provide the same named method surface as Python. Their methods retain
   StarlarkX equality, ordering, strict argument typing, freezing, and
   active-iteration mutation rules.
-- Dictionaries provide the familiar mutating/query methods, but not `copy` or
-  `fromkeys`; their key/value/item methods return lists rather than views.
+- Dictionaries provide Python's instance method names, including `copy`, but
+  not the `fromkeys` class method; their key/value/item methods return lists
+  rather than views.
 - Sets omit `copy`, `difference_update`, `intersection_update`, `isdisjoint`,
   and `symmetric_difference_update`.
 - Strings add explicit byte/code-point iterator methods but omit Python methods

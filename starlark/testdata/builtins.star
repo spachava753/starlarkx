@@ -228,7 +228,7 @@ z1.append(3)
 
 # dir for builtin_function_or_method
 assert.eq(dir(None), [])
-assert.eq(dir({})[:3], ["clear", "get", "items"]) # etc
+assert.eq(dir({})[:3], ["clear", "copy", "get"]) # etc
 assert.eq(dir(1), [])
 assert.eq(dir([])[:3], ["append", "clear", "copy"]) # etc
 

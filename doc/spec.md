@@ -874,6 +874,7 @@ two dictionaries with `<`.
 A dictionary value has these methods:
 
 * [`clear`](#dict·clear)
+* [`copy`](#dict·copy)
 * [`get`](#dict·get)
 * [`items`](#dict·items)
 * [`keys`](#dict·keys)
@@ -3551,6 +3552,24 @@ It fails if the dictionary is frozen or if there are active iterators.
 x = {"one": 1, "two": 2}
 x.clear()                               # None
 print(x)                                # {}
+```
+
+<a id='dict·copy'></a>
+### dict·copy
+
+`D.copy()` returns a new mutable dictionary containing the entries of D in the
+same insertion order. The copy is shallow: keys and values are shared with D.
+The receiver may be frozen; only the new outer dictionary is guaranteed to be
+mutable.
+
+```python
+inner = [1]
+x = {"a": inner}
+y = x.copy()
+y["b"] = 2
+inner.append(3)
+x                                       # {"a": [1, 3]}
+y                                       # {"a": [1, 3], "b": 2}
 ```
 
 <a id='dict·get'></a>
