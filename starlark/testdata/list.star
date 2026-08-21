@@ -174,6 +174,31 @@ x5.append(4)
 x5.append("abc")
 assert.eq(x5, [1, 2, 3, 4, "abc"])
 
+# copy
+copy_inner = [2]
+copy_source = [1, copy_inner]
+copy_result = copy_source.copy()
+copy_result.append(3)
+copy_result[1].append(4)
+assert.eq(copy_source, [1, [2, 4]])
+assert.eq(copy_result, [1, [2, 4], 3])
+assert.fails(lambda: copy_source.copy(1), "copy: got 1 arguments, want 0")
+
+frozen_copy_source = [1, 2]
+freeze(frozen_copy_source)
+mutable_copy = frozen_copy_source.copy()
+mutable_copy.append(3)
+assert.eq(frozen_copy_source, [1, 2])
+assert.eq(mutable_copy, [1, 2, 3])
+
+# count
+assert.eq([].count(1), 0)
+assert.eq([1, 2, 1, 3, 1].count(1), 3)
+assert.eq([1, True, 1].count(1), 2)
+assert.eq([[1], [2], [1]].count([1]), 2)
+assert.fails(lambda: [1].count(), "count: got 0 arguments, want 1")
+assert.fails(lambda: [1].count(value=1), "count: unexpected keyword arguments")
+
 # extend
 x5a = [1, 2, 3]
 x5a.extend("abc".elems())  # string
@@ -228,6 +253,69 @@ assert.eq(bananas.index("s", -1000, 7), 6)  # bananaS
 assert.fails(lambda: bananas.index("s", -1000, 6), "value not in list")
 assert.fails(lambda: bananas.index("d", -1000, 1000), "value not in list")
 
+# reverse
+reverse_values = [1, 2, 3, 4]
+reverse_alias = reverse_values
+assert.eq(reverse_values.reverse(), None)
+assert.eq(reverse_values, [4, 3, 2, 1])
+assert.eq(reverse_alias, [4, 3, 2, 1])
+assert.fails(lambda: reverse_values.reverse(1), "reverse: got 1 arguments, want 0")
+assert.fails(lambda: reverse_values.reverse(value=True), "reverse: unexpected keyword arguments")
+
+# sort
+sort_values = [4, 1, 3, 2]
+sort_alias = sort_values
+assert.eq(sort_values.sort(), None)
+assert.eq(sort_values, [1, 2, 3, 4])
+assert.eq(sort_alias, [1, 2, 3, 4])
+
+sort_values.sort(reverse=True)
+assert.eq(sort_values, [4, 3, 2, 1])
+sort_values.sort(key=None)
+assert.eq(sort_values, [1, 2, 3, 4])
+
+sort_key_calls = []
+def list_sort_key(pair):
+    sort_key_calls.append(pair)
+    return pair[0]
+
+sort_pairs = [(2, "a"), (1, "b"), (2, "c"), (1, "d")]
+sort_pairs.sort(key=list_sort_key)
+assert.eq(sort_key_calls, [(2, "a"), (1, "b"), (2, "c"), (1, "d")])
+assert.eq(sort_pairs, [(1, "b"), (1, "d"), (2, "a"), (2, "c")])
+
+reverse_sort_pairs = [(1, "a"), (2, "b"), (1, "c"), (2, "d")]
+reverse_sort_pairs.sort(key=lambda pair: pair[0], reverse=True)
+assert.eq(reverse_sort_pairs, [(2, "b"), (2, "d"), (1, "a"), (1, "c")])
+
+empty_sort = []
+assert.eq(empty_sort.sort(key=0), None)  # an unused key is not called
+assert.fails(lambda: [1].sort(key=0), "invalid call of non-function.*int")
+assert.fails(lambda: [2, 1].sort(len), "sort: unexpected positional arguments")
+assert.fails(lambda: [2, 1].sort(reverse=1), 'for parameter "reverse": got int, want bool')
+assert.fails(lambda: [2, 1].sort(unknown=True), "sort: unexpected keyword argument")
+
+sort_error_values = [1, 2, None, 3]
+assert.fails(sort_error_values.sort, "(int < NoneType|NoneType < int) not implemented")
+assert.eq(sort_error_values, [1, 2, None, 3])
+
+sort_mutation_values = [3, 2, 1]
+def list_sort_mutating_key(value):
+    sort_mutation_values.append(4)
+    return value
+
+assert.fails(
+    lambda: sort_mutation_values.sort(key=list_sort_mutating_key),
+    "cannot append to list during iteration",
+)
+assert.eq(sort_mutation_values, [3, 2, 1])
+
+frozen_list_methods = [2, 1]
+freeze(frozen_list_methods)
+assert.fails(frozen_list_methods.reverse, "cannot reverse frozen list")
+assert.fails(frozen_list_methods.sort, "cannot sort frozen list")
+assert.eq(frozen_list_methods.count(1), 1)
+
 # slicing, x[i:j:k]
 assert.eq(bananas[6::-2], list("snnb".elems()))
 assert.eq(bananas[5::-2], list("aaa".elems()))
@@ -274,3 +362,17 @@ def iterator5():
     _ = [f(list) for x in list]
 
 assert.fails(iterator5, "append.*during iteration")
+
+def iterator6():
+    values = [3, 2, 1]
+    for _ in values:
+        values.reverse()
+
+assert.fails(iterator6, "reverse.*during iteration")
+
+def iterator7():
+    values = [3, 2, 1]
+    for _ in values:
+        values.sort()
+
+assert.fails(iterator7, "sort.*during iteration")

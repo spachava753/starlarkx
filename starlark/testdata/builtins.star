@@ -230,7 +230,7 @@ z1.append(3)
 assert.eq(dir(None), [])
 assert.eq(dir({})[:3], ["clear", "get", "items"]) # etc
 assert.eq(dir(1), [])
-assert.eq(dir([])[:3], ["append", "clear", "extend"]) # etc
+assert.eq(dir([])[:3], ["append", "clear", "copy"]) # etc
 
 # hasattr, getattr, dir
 # hasfields is an application-defined type defined in eval_test.go.

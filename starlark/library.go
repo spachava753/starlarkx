@@ -96,13 +96,17 @@ var (
 	}
 
 	listMethods = map[string]*Builtin{
-		"append": NewBuiltin("append", list_append),
-		"clear":  NewBuiltin("clear", list_clear),
-		"extend": NewBuiltin("extend", list_extend),
-		"index":  NewBuiltin("index", list_index),
-		"insert": NewBuiltin("insert", list_insert),
-		"pop":    NewBuiltin("pop", list_pop),
-		"remove": NewBuiltin("remove", list_remove),
+		"append":  NewBuiltin("append", list_append),
+		"clear":   NewBuiltin("clear", list_clear),
+		"copy":    NewBuiltin("copy", list_copy),
+		"count":   NewBuiltin("count", list_count),
+		"extend":  NewBuiltin("extend", list_extend),
+		"index":   NewBuiltin("index", list_index),
+		"insert":  NewBuiltin("insert", list_insert),
+		"pop":     NewBuiltin("pop", list_pop),
+		"remove":  NewBuiltin("remove", list_remove),
+		"reverse": NewBuiltin("reverse", list_reverse),
+		"sort":    NewBuiltin("sort", list_sort),
 	}
 
 	stringMethods = map[string]*Builtin{
@@ -1052,14 +1056,25 @@ func sorted(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 		values = append(values, x)
 	}
 
-	// Derive keys from values by applying key function.
+	var keyValue Value
+	if key != nil {
+		keyValue = key
+	}
+	if err := sortValues(thread, values, keyValue, reverse); err != nil {
+		return nil, err
+	}
+	return NewList(values), nil
+}
+
+// sortValues stably sorts values in place, deriving each key exactly once.
+func sortValues(thread *Thread, values []Value, key Value, reverse bool) error {
 	var keys []Value
 	if key != nil {
 		keys = make([]Value, len(values))
 		for i, v := range values {
 			k, err := Call(thread, key, Tuple{v}, nil)
 			if err != nil {
-				return nil, err // to preserve backtrace, don't modify error
+				return err // preserve the backtrace
 			}
 			keys[i] = k
 		}
@@ -1071,7 +1086,7 @@ func sorted(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	} else {
 		sort.Stable(slice)
 	}
-	return NewList(slice.values), slice.err
+	return slice.err
 }
 
 type sortSlice struct {
@@ -1402,6 +1417,34 @@ func list_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 	return None, nil
 }
 
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·copy
+func list_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	return NewList(slices.Clone(b.Receiver().(*List).elems)), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·count
+func list_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var value Value
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
+		return nil, err
+	}
+
+	count := 0
+	for _, elem := range b.Receiver().(*List).elems {
+		eq, err := Equal(elem, value)
+		if err != nil {
+			return nil, nameErr(b, err)
+		}
+		if eq {
+			count++
+		}
+	}
+	return MakeInt(count), nil
+}
+
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·extend
 func list_extend(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
@@ -1512,6 +1555,51 @@ func list_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	res := list.elems[i]
 	list.elems = append(list.elems[:i], list.elems[i+1:]...)
 	return res, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·reverse
+func list_reverse(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	list := b.Receiver().(*List)
+	if err := list.checkMutable("reverse"); err != nil {
+		return nil, nameErr(b, err)
+	}
+	slices.Reverse(list.elems)
+	return None, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·sort
+func list_sort(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if len(args) > 0 {
+		return nil, nameErr(b, "unexpected positional arguments")
+	}
+	var key Value
+	var reverse bool
+	if err := UnpackArgs(b.Name(), nil, kwargs,
+		"key??", &key,
+		"reverse?", &reverse,
+	); err != nil {
+		return nil, err
+	}
+
+	list := b.Receiver().(*List)
+	if err := list.checkMutable("sort"); err != nil {
+		return nil, nameErr(b, err)
+	}
+
+	values := slices.Clone(list.elems)
+	list.itercount++
+	defer func() { list.itercount-- }()
+	if err := sortValues(thread, values, key, reverse); err != nil {
+		return nil, err
+	}
+	if list.frozen {
+		return nil, nameErr(b, "cannot sort frozen list")
+	}
+	list.elems = values
+	return None, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·capitalize

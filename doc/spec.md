@@ -703,11 +703,15 @@ A list value has these methods:
 
 * [`append`](#list·append)
 * [`clear`](#list·clear)
+* [`copy`](#list·copy)
+* [`count`](#list·count)
 * [`extend`](#list·extend)
 * [`index`](#list·index)
 * [`insert`](#list·insert)
 * [`pop`](#list·pop)
 * [`remove`](#list·remove)
+* [`reverse`](#list·reverse)
+* [`sort`](#list·sort)
 
 ### Tuples
 
@@ -3706,6 +3710,34 @@ x.clear()                               # None
 x                                       # []
 ```
 
+<a id='list·copy'></a>
+### list·copy
+
+`L.copy()` returns a new mutable list containing the elements of L. The copy is
+shallow: mutable elements are shared with L. The receiver may be frozen; only
+the new outer list is guaranteed to be mutable.
+
+```python
+inner = [2]
+x = [1, inner]
+y = x.copy()
+y.append(3)
+inner.append(4)
+x                                       # [1, [2, 4]]
+y                                       # [1, [2, 4], 3]
+```
+
+<a id='list·count'></a>
+### list·count
+
+`L.count(x)` returns the number of elements of L equal to `x` according to
+Starlark equality.
+
+```python
+[1, 2, 1, 3, 1].count(1)               # 3
+[[1], [2], [1]].count([1])             # 2
+```
+
 <a id='list·extend'></a>
 ### list·extend
 
@@ -3794,6 +3826,47 @@ x = [1, 2, 3, 2]
 x.remove(2)                             # None (x == [1, 3, 2])
 x.remove(2)                             # None (x == [1, 3])
 x.remove(2)                             # error: element not found
+```
+
+<a id='list·reverse'></a>
+### list·reverse
+
+`L.reverse()` reverses the elements of L in place and returns `None`. It fails
+if L is frozen or has active iterators.
+
+```python
+x = [1, 2, 3]
+x.reverse()                             # None
+x                                       # [3, 2, 1]
+```
+
+<a id='list·sort'></a>
+### list·sort
+
+`L.sort(*, key=None, reverse=False)` stably sorts L in place and returns `None`.
+`key` and `reverse` are keyword-only. If `key` is omitted or `None`, elements
+are compared directly. Otherwise, `key` is called exactly once for each element
+and the resulting keys are used for all comparisons. An unused key is not
+called for an empty list.
+
+Sorting uses the ordinary Starlark `<` comparison. Equal keys retain their
+relative order. `reverse` must be a Boolean; when true, the result is in
+reverse order while remaining stable.
+
+`sort` fails if L is frozen or has active iterators. The list is treated as
+actively iterated while keys and comparisons are evaluated, so those operations
+cannot mutate L. Sorting uses a snapshot and replaces L's elements only after
+all key calls and comparisons succeed; on failure, L's element sequence is
+unchanged.
+
+```python
+x = [3, 1, 4, 1, 5]
+x.sort()                                # None
+x                                       # [1, 1, 3, 4, 5]
+
+words = ["one", "three", "two"]
+words.sort(key=len, reverse=True)       # None
+words                                   # ["three", "one", "two"]
 ```
 
 <a id='set·add'></a>

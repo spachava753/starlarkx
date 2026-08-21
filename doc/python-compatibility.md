@@ -159,7 +159,7 @@ before resolving any of them.
 | Expressions / Immutable collection counterparts | `OPEN` | - | - | - | - |
 | Builtins / `sum` | `STARLARKX` | `DEFAULT` | `YES` | Provide `sum(iterable, /, start=0)`, accepting `start` positionally or by name, rejecting string and bytes starts, returning `start` unchanged for an empty iterable, and otherwise applying ordinary StarlarkX `+` from left to right. | Provide Python's familiar accumulation interface while preserving StarlarkX boolean, arithmetic, sequence, iteration, and host-defined value semantics. |
 | Builtins / Other missing Python built-ins | `OPEN` | - | - | - | - |
-| Methods / List method surface | `OPEN` | - | - | - | - |
+| Methods / List method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`; make `copy` shallow, make in-place mutators return `None`, and make `sort` stable with keyword-only `key=None` and `reverse=False`, one key call per item, ordinary StarlarkX `<`, strict Boolean `reverse`, and replacement only after successful key evaluation and comparison. Mutators reject frozen lists and lists with active iterators. | Provide Python's familiar complete list method surface while preserving StarlarkX equality, ordering, call typing, freezing, and mutation-safety rules. |
 | Methods / Dictionary method surface | `OPEN` | - | - | - | - |
 | Methods / Set method surface | `OPEN` | - | - | - | - |
 | Methods / String method surface | `OPEN` | - | - | - | - |
@@ -238,6 +238,7 @@ module definitions. They are not incidental parser gaps.
 | Duplicate dictionary literals | Evaluating `{"a": 1, "a": 2}` is an error. | The last value wins. | Divergence |
 | Mutation while iterating | Any mutation of the iterated list, dictionary, or set is a dynamic error. Deeply reachable values may still be mutated. | List mutation is allowed (though often hazardous); dictionary value replacement is allowed when size is unchanged; size-changing dictionary/set mutation errors. | Divergence |
 | Frozen values | A frozen list/dict/set remains unhashable and the original object cannot be thawed. A program may still construct a mutable shallow copy. | Python has separate mutable and immutable types such as `set`/`frozenset`; ordinary containers do not become frozen implicitly. | Divergence / omission |
+| List methods | Lists expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`. `copy` returns a mutable shallow copy. In-place mutators return `None` and reject frozen or actively iterated lists. `sort` is stable with keyword-only `key=None` and `reverse=False`, but uses strict Boolean typing, StarlarkX `<`, a mutation lock during key/comparison work, and an atomic element-sequence replacement. | Lists expose the same method names and core effects. They remain mutable, `sort` truth-tests `reverse`, and CPython may leave a list partially reordered after a comparison failure and makes it appear empty during sorting. | Aligned surface / value and mutation-model divergence |
 | Set order | Sets iterate in insertion order; set operations preserve defined operand order; `pop()` removes the first inserted element. | Set iteration and `pop()` order are intentionally unspecified. | Divergence |
 | Dictionary `popitem` | Removes and returns the most recently inserted item (LIFO). Empty, frozen, or actively iterated dictionaries cannot be popped. | Removes and returns the most recently inserted item (LIFO), raising `KeyError` when empty. | Aligned ordering / runtime restriction |
 | Dictionary methods | `keys()`, `values()`, and `items()` return new lists. | They return dynamic view objects. | Divergence |
@@ -356,8 +357,9 @@ exceptions, and reflection are absent. The missing Python 3.14 built-ins include
 
 Built-in type methods are also a subset rather than a compatibility layer:
 
-- Lists provide `append`, `clear`, `extend`, `index`, `insert`, `pop`, and
-  `remove`, but not Python's `copy`, `count`, `reverse`, or in-place `sort`.
+- Lists provide the same named method surface as Python. Their methods retain
+  StarlarkX equality, ordering, strict argument typing, freezing, and
+  active-iteration mutation rules.
 - Dictionaries provide the familiar mutating/query methods, but not `copy` or
   `fromkeys`; their key/value/item methods return lists rather than views.
 - Sets omit `copy`, `difference_update`, `intersection_update`, `isdisjoint`,
