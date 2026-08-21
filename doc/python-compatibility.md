@@ -166,12 +166,12 @@ before resolving any of them.
 | Methods / String method surface | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
-| Dialect / `Set` | `OPEN` | - | - | - | - |
-| Dialect / `While` | `OPEN` | - | - | - | - |
-| Dialect / `TopLevelControl` | `OPEN` | - | - | - | - |
-| Dialect / `GlobalReassign` | `OPEN` | - | - | - | - |
-| Dialect / `Recursion` | `OPEN` | - | - | - | - |
-| Dialect / `LoadBindsGlobally` | `OPEN` | - | - | - | - |
+| Dialect / `Set` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.Set`: an explicit zero-valued option set rejects references to the universal `set` built-in, while `Set: true` permits them; legacy APIs continue deriving the value from `resolve.AllowSet`, whose default is true. | Keep Go Starlark's host-selectable set extension and its established modern-versus-legacy defaults. |
+| Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep Go Starlark's bounded default and explicit opt-in for potentially unbounded loops. |
+| Dialect / `TopLevelControl` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.TopLevelControl`: false rejects top-level `if`, `for`, and `while`, while true permits them, subject to `While` for top-level `while`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep module initialization linear by default while retaining the upstream host-controlled extension. |
+| Dialect / `GlobalReassign` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.GlobalReassign`: false enforces one top-level binding per name, while true permits reassignment and retains the existing top-level binding-resolution behavior. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep static single-assignment as the default without changing the upstream compatibility option. |
+| Dialect / `Recursion` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.Recursion`: false rejects direct and mutual recursive calls, while true disables that check. Legacy APIs continue deriving it from `resolve.AllowRecursion`. | Keep bounded non-recursive execution as the default and preserve upstream's explicit escape hatch. |
+| Dialect / `LoadBindsGlobally` | `STARLARK` | `OPTION` | `YES` | Preserve the deprecated upstream `FileOptions.LoadBindsGlobally`: false gives `load` file-local bindings, while true gives it global bindings; legacy APIs continue deriving it from `resolve.LoadBindsGlobally`. | Retain upstream source and host API compatibility without promoting or expanding the deprecated behavior. |
 
 ## What is already Python-like
 
@@ -389,7 +389,7 @@ Modern callers choose syntax and resolver behavior through
 | `Set` | Allows references to the universal `set` built-in. | Enables a partial Python set type. |
 | `While` | Allows `while` statements. | Closer to Python. |
 | `TopLevelControl` | Allows top-level `if`, `for`, and `while`. | Closer to Python. |
-| `GlobalReassign` | Allows rebinding top-level names. In legacy resolution it also changes how references around top-level redefinitions bind. | Closer to Python, with a legacy semantic coupling to be separated. |
+| `GlobalReassign` | Allows rebinding top-level names. In legacy resolution it also changes how references around top-level redefinitions bind. | Closer to Python, though the legacy API couples it to other controls. |
 | `Recursion` | Allows recursive calls. | Closer to Python. |
 | `LoadBindsGlobally` | Makes `load` bind globals instead of file-local names; deprecated. | Superficially closer to import binding, but still not Python import semantics. |
 
@@ -399,9 +399,9 @@ enabled. The command's `-globalreassign` flag currently enables reassignment,
 top-level control, and `while`; `-recursion` enables recursive calls only,
 despite the command's stale help text saying it also enables `while`.
 
-For StarlarkX, explicit per-file options are a better extension seam than the
-legacy resolver globals. Python-compatibility presets could select these
-existing behaviors without changing standard Starlark mode.
+StarlarkX retains these controls as upstream Go Starlark options, including the
+legacy resolver-global mappings. No Python-compatibility preset or change to
+their defaults is planned.
 
 ## Specification status
 
@@ -427,17 +427,14 @@ language specification now describes its actual effect.
 
 A practical extension plan can group work by architectural depth:
 
-1. **Enable existing behavior**: expose `While`, `TopLevelControl`,
-   `GlobalReassign`, and `Recursion` through an explicit Python-compatible
-   option preset.
-2. **Change local semantics**: Unicode string indexing/iteration, bytes
+1. **Change local semantics**: Unicode string indexing/iteration, bytes
    behavior, NaN semantics, eager/lazy return types, builtin signatures, and
    argument evaluation order. These changes are localized conceptually but can
    break Starlark code.
-3. **Extend parser and evaluator**: chained comparisons, literal
+2. **Extend parser and evaluator**: chained comparisons, literal
    concatenation, numeric separators, richer unpacking, slice assignment,
    loop `else`, f-strings, and additional comprehension forms.
-4. **Add new runtime subsystems**: exceptions, generators/iterators, classes
+3. **Add new runtime subsystems**: exceptions, generators/iterators, classes
    and Python's object protocol, imports/module objects, context managers,
    async execution, and broad standard-library compatibility. These are not
    incremental syntax additions; they alter the evaluator and value model.
