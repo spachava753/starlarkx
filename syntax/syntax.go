@@ -224,6 +224,7 @@ type Expr interface {
 
 func (*BinaryExpr) expr()    {}
 func (*CallExpr) expr()      {}
+func (*CompareExpr) expr()   {}
 func (*Comprehension) expr() {}
 func (*CondExpr) expr()      {}
 func (*DictEntry) expr()     {}
@@ -497,6 +498,26 @@ type BinaryExpr struct {
 func (x *BinaryExpr) Span() (start, end Position) {
 	start, _ = x.X.Span()
 	_, end = x.Y.Span()
+	return start, end
+}
+
+// A CompareExpr represents one or more chained comparisons: X op Y op Z.
+type CompareExpr struct {
+	commentsRef
+	X    Expr
+	List []Comparison // non-empty, in source order
+}
+
+// A Comparison is one operator and right operand in a CompareExpr.
+type Comparison struct {
+	OpPos Position
+	Op    Token
+	Y     Expr
+}
+
+func (x *CompareExpr) Span() (start, end Position) {
+	start, _ = x.X.Span()
+	_, end = x.List[len(x.List)-1].Y.Span()
 	return start, end
 }
 

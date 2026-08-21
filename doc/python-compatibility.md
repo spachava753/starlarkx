@@ -123,7 +123,7 @@ before resolving any of them.
 | Calls / Float parsing protocols | `OPEN` | - | - | - | - |
 | Calls / Extensibility | `OPEN` | - | - | - | - |
 | Syntax / Adjacent string literals | `OPEN` | - | - | - | - |
-| Syntax / Chained comparisons | `PYTHON` | `DEFAULT` | `NO` | Accept chains such as `a < b <= c`, evaluate each operand at most once, and short-circuit from left to right with Python semantics. | Support expected Python syntax while preserving the single evaluation of intermediate operands that an `and` rewrite cannot guarantee. |
+| Syntax / Chained comparisons | `PYTHON` | `DEFAULT` | `YES` | Accept chains such as `a < b <= c`, evaluate each operand at most once, and short-circuit from left to right with Python semantics. | Support expected Python syntax while preserving the single evaluation of intermediate operands that an `and` rewrite cannot guarantee. |
 | Syntax / Unparenthesized singleton tuples | `OPEN` | - | - | - | - |
 | Syntax / Trailing commas | `OPEN` | - | - | - | - |
 | Syntax / Assignment | `OPEN` | - | - | - | - |
@@ -185,6 +185,8 @@ The shared core is substantial:
 - Arithmetic, floor division, modulo, bitwise integer operators, Boolean
   short-circuiting, conditional expressions, indexing, negative indices, and
   slicing with a stride.
+- Comparison chains evaluate adjacent pairs from left to right, evaluate each
+  operand at most once, and skip later operands after the first false result.
 - List and dictionary comprehensions with nested `for` and `if` clauses.
 - `def`, `lambda`, nested functions, default arguments, variadic positional and
   keyword arguments, keyword-only parameters, `return`, `if`/`elif`/`else`,
@@ -275,7 +277,6 @@ construct but intentionally or currently accepts less syntax.
 | Construct | Starlark restriction |
 | --- | --- |
 | Adjacent string literals | No implicit concatenation: `"a" "b"` is a parse error; use `"a" + "b"`. |
-| Chained comparisons | Comparisons are non-associative: `0 <= i < n` is rejected; use `0 <= i and i < n`. |
 | Unparenthesized singleton tuples | `x = value,` is rejected; write `x = (value,)`. Multi-element unparenthesized tuples remain valid in selected contexts. |
 | Trailing commas | A trailing comma is rejected in unparenthesized tuple expressions and loop/comprehension targets where Python accepts it. It is accepted in calls and bracketed displays. |
 | Assignment | There is no chained assignment (`a = b = 0`), starred target (`a, *rest = xs`), or slice assignment (`xs[1:3] = ys`). Compound targets must match the source sequence exactly. |
@@ -431,9 +432,9 @@ A practical extension plan can group work by architectural depth:
    behavior, NaN semantics, eager/lazy return types, builtin signatures, and
    argument evaluation order. These changes are localized conceptually but can
    break Starlark code.
-2. **Extend parser and evaluator**: chained comparisons, literal
-   concatenation, numeric separators, richer unpacking, slice assignment,
-   loop `else`, f-strings, and additional comprehension forms.
+2. **Extend parser and evaluator**: literal concatenation, numeric separators,
+   richer unpacking, slice assignment, loop `else`, f-strings, and additional
+   comprehension forms.
 3. **Add new runtime subsystems**: exceptions, generators/iterators, classes
    and Python's object protocol, imports/module objects, context managers,
    async execution, and broad standard-library compatibility. These are not

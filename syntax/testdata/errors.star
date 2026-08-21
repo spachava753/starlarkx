@@ -107,25 +107,6 @@ _ = [a for b in c if lambda: d if e else f]   ### "got else, want ']'"
 _ = [a for b in lambda: c] ### `got lambda, want primary`
 
 ---
-# Comparison operations are not associative.
-
-_ = (0 == 1) == 2 # ok
-_ = 0 == (1 == 2) # ok
-_ = 0 == 1 == 2 ### "== does not associate with =="
-
----
-
-_ = (0 <= i) < n   # ok
-_ = 0 <= (i < n) # ok
-_ = 0 <= i < n ### "<= does not associate with <"
-
----
-
-_ = (a in b) not in c  # ok
-_ = a in (b not in c)  # ok
-_ = a in b not in c    ### "in does not associate with not in"
-
----
 # shift/reduce ambiguity is reduced
 _ = [x for x in a if b else c] ### `got else, want ']', for, or if`
 ---

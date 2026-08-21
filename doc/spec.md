@@ -1853,9 +1853,9 @@ and
 *    /    //   %
 ```
 
-Comparison operators, `in`, and `not in` are non-associative,
-so the parser will not accept `0 <= i < n`.
-All other binary operators of equal precedence associate to the left.
+Comparison operators, `in`, and `not in` form comparison chains as described
+under [Comparisons](#comparisons). All other binary operators of equal
+precedence associate to the left.
 
 ```grammar {.good}
 BinaryExpr = Test {Binop Test} .
@@ -1917,6 +1917,22 @@ not x or not x[0]
 
 The `==` operator reports whether its operands are equal; the `!=`
 operator is its negation.
+
+Comparisons may be chained arbitrarily. A chain such as `a < b <= c` is
+semantically equivalent to `a < b and b <= c`, except that each operand is
+evaluated at most once. Chains evaluate from left to right and stop at the first
+false comparison, so later operands are not evaluated. A chain compares only
+adjacent operands; for example, `a < b > c` does not compare `a` with `c`.
+
+Parentheses end a chain. Thus `(a < b) < c` compares the Boolean result of
+`a < b` with `c`, and `a < (b < c)` compares `a` with the Boolean result of
+`b < c`.
+
+```python
+0 <= i < n                     # 0 <= i and i < n; i is evaluated once
+x < y > z                      # x < y and y > z
+item in values != []           # item in values and values != []
+```
 
 The operators `<`, `>`, `<=`, and `>=` perform an ordered comparison
 of their operands.  It is an error to apply these operators to

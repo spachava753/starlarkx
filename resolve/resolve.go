@@ -729,6 +729,12 @@ func (r *resolver) expr(e syntax.Expr) {
 		r.expr(e.X)
 		r.expr(e.Y)
 
+	case *syntax.CompareExpr:
+		r.expr(e.X)
+		for _, comparison := range e.List {
+			r.expr(comparison.Y)
+		}
+
 	case *syntax.DotExpr:
 		r.expr(e.X)
 		// ignore e.Name

@@ -135,6 +135,12 @@ func Walk(n Node, f func(Node) bool) {
 		Walk(n.X, f)
 		Walk(n.Y, f)
 
+	case *CompareExpr:
+		Walk(n.X, f)
+		for _, comparison := range n.List {
+			Walk(comparison.Y, f)
+		}
+
 	case *DotExpr:
 		Walk(n.X, f)
 		Walk(n.Name, f)

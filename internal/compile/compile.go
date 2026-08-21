@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 14
+const Version = 15
 
 type Opcode uint8
 
@@ -1395,6 +1395,9 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 			log.Panicf("%s: unexpected unary op: %s", e.OpPos, e.Op)
 		}
 
+	case *syntax.CompareExpr:
+		fcomp.compare(e)
+
 	case *syntax.BinaryExpr:
 		switch e.Op {
 		// short-circuit operators
@@ -1456,6 +1459,51 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		start, _ := e.Span()
 		log.Panicf("%s: unexpected expr %T", start, e)
 	}
+}
+
+// compare emits a left-to-right, single-evaluation comparison chain.
+func (fcomp *fcomp) compare(e *syntax.CompareExpr) {
+	if len(e.List) == 0 {
+		panic("empty comparison chain")
+	}
+
+	fcomp.expr(e.X)
+	if len(e.List) == 1 {
+		comparison := e.List[0]
+		fcomp.expr(comparison.Y)
+		fcomp.binop(comparison.OpPos, comparison.Op)
+		return
+	}
+
+	failed := fcomp.newBlock()
+	done := fcomp.newBlock()
+	for i, comparison := range e.List {
+		fcomp.expr(comparison.Y)
+		if i == len(e.List)-1 {
+			fcomp.binop(comparison.OpPos, comparison.Op)
+			fcomp.jump(done)
+			break
+		}
+
+		// Retain both operands until the comparison succeeds, then carry
+		// the right operand forward as the left operand of the next pair.
+		fcomp.emit(DUP2)
+		fcomp.binop(comparison.OpPos, comparison.Op)
+		next := fcomp.newBlock()
+		fcomp.condjump(CJMP, next, failed)
+
+		fcomp.block = next
+		fcomp.emit(EXCH)
+		fcomp.emit(POP)
+	}
+
+	fcomp.block = failed
+	fcomp.emit(POP)
+	fcomp.emit(POP)
+	fcomp.emit(FALSE)
+	fcomp.jump(done)
+
+	fcomp.block = done
 }
 
 type summand struct {

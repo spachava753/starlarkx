@@ -14,7 +14,7 @@ import (
 func TestWalk(t *testing.T) {
 	const src = `
 for x in y:
-  if x:
+  if 0 < x < 10:
     pass
   else:
     f([2*x for x in "abc"])
@@ -48,7 +48,10 @@ File
     Ident
     Ident
     IfStmt
-      Ident
+      CompareExpr
+        Literal
+        Ident
+        Literal
       BranchStmt
       ExprStmt
         CallExpr

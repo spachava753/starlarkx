@@ -648,27 +648,38 @@ func (p *parser) parseTestPrec(prec int) Expr {
 // Uses precedence climbing; see http://www.engr.mun.ca/~theo/Misc/exp_parsing.htm#climbing.
 func (p *parser) parseBinopExpr(prec int) Expr {
 	x := p.parseTestPrec(prec + 1)
-	for first := true; ; first = false {
-		if p.tok == NOT {
-			p.nextToken() // consume NOT
-			// In this context, NOT must be followed by IN.
-			// Replace NOT IN by a single NOT_IN token.
-			if p.tok != IN {
-				p.in.errorf(p.in.pos, "got %#v, want in", p.tok)
-			}
-			p.tok = NOT_IN
-		}
 
+	// Comparisons form a chain rather than a left-associated binary tree.
+	if prec == int(precedence[EQL]) {
+		var list []Comparison
+		for {
+			if p.tok == NOT {
+				p.nextToken() // consume NOT
+				if p.tok != IN {
+					p.in.errorf(p.in.pos, "got %#v, want in", p.tok)
+				}
+				p.tok = NOT_IN
+			}
+			if int(precedence[p.tok]) != prec {
+				break
+			}
+
+			op := p.tok
+			pos := p.nextToken()
+			y := p.parseTestPrec(prec + 1)
+			list = append(list, Comparison{OpPos: pos, Op: op, Y: y})
+		}
+		if len(list) > 0 {
+			return &CompareExpr{X: x, List: list}
+		}
+		return x
+	}
+
+	for {
 		// Binary operator of specified precedence?
 		opprec := int(precedence[p.tok])
 		if opprec < prec {
 			return x
-		}
-
-		// Comparisons are non-associative.
-		if !first && opprec == int(precedence[EQL]) {
-			p.in.errorf(p.in.pos, "%s does not associate with %s (use parens)",
-				x.(*BinaryExpr).Op, p.tok)
 		}
 
 		op := p.tok
@@ -682,7 +693,7 @@ func (p *parser) parseBinopExpr(prec int) Expr {
 var precedence [maxToken]int8
 
 // preclevels groups operators of equal precedence.
-// Comparisons are nonassociative; other binary operators associate to the left.
+// Comparisons form chains; other binary operators associate to the left.
 // Unary MINUS, unary PLUS, and TILDE have higher precedence so are handled in parsePrimary.
 // See https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#binary-operators
 var preclevels = [...][]Token{
