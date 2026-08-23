@@ -162,7 +162,7 @@ before resolving any of them.
 | Methods / List method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`; make `copy` shallow, make in-place mutators return `None`, and make `sort` stable with keyword-only `key=None` and `reverse=False`, one key call per item, ordinary StarlarkX `<`, strict Boolean `reverse`, and replacement only after successful key evaluation and comparison. Mutators reject frozen lists and lists with active iterators. | Provide Python's familiar complete list method surface while preserving StarlarkX equality, ordering, call typing, freezing, and mutation-safety rules. |
 | Methods / Dictionary `copy` | `STARLARKX` | `DEFAULT` | `YES` | Return a new mutable shallow dictionary copy with the source's insertion order and shared keys and values, whether the source dictionary is mutable or frozen. | Provide Python's familiar shallow-copy operation while preserving StarlarkX's frozen published values and enabling a mutable locally owned outer dictionary. |
 | Methods / Dictionary `fromkeys` | `OPEN` | - | - | - | - |
-| Methods / Set method surface | `OPEN` | - | - | - | - |
+| Methods / Set method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose Python's complete named set instance-method surface; make `copy` return a new mutable shallow set; let `difference`, `difference_update`, `intersection`, and `intersection_update` accept zero or more iterable operands; make `isdisjoint` short-circuit and `symmetric_difference_update` accept one iterable; deduplicate symmetric-difference operands; and make the three added mutators return `None` while rejecting frozen sets and sets with active iterators. All methods use StarlarkX iterability, equality, hashing, and insertion/operation order. | Provide Python's familiar complete set method API and core algorithms while preserving StarlarkX's value model, non-iterable strings, deterministic order, frozen published values, and mutation-safety rules. |
 | Methods / String method surface | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
@@ -365,8 +365,10 @@ Built-in type methods are also a subset rather than a compatibility layer:
 - Dictionaries provide Python's instance method names, including `copy`, but
   not the `fromkeys` class method; their key/value/item methods return lists
   rather than views.
-- Sets omit `copy`, `difference_update`, `intersection_update`, `isdisjoint`,
-  and `symmetric_difference_update`.
+- Sets provide Python's named instance method surface. Their methods accept
+  StarlarkX iterables rather than Python iterables, use StarlarkX equality and
+  hashing, preserve deterministic insertion/operation order, and apply
+  StarlarkX freezing and active-iteration mutation rules.
 - Strings add explicit byte/code-point iterator methods but omit Python methods
   including `casefold`, `center`, `encode`, `expandtabs`, `isascii`,
   `isdecimal`, `isidentifier`, `isnumeric`, `isprintable`, `ljust`,

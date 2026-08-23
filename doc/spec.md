@@ -913,14 +913,19 @@ A set has these methods:
 
 * [`add`](#set·add)
 * [`clear`](#set·clear)
+* [`copy`](#set·copy)
 * [`difference`](#set·difference)
+* [`difference_update`](#set·difference_update)
 * [`discard`](#set·discard)
 * [`intersection`](#set·intersection)
+* [`intersection_update`](#set·intersection_update)
+* [`isdisjoint`](#set·isdisjoint)
 * [`issubset`](#set·issubset)
 * [`issuperset`](#set·issuperset)
 * [`pop`](#set·pop)
 * [`remove`](#set·remove)
 * [`symmetric_difference`](#set·symmetric_difference)
+* [`symmetric_difference_update`](#set·symmetric_difference_update)
 * [`union`](#set·union)
 * [`update`](#set·update)
 
@@ -3932,20 +3937,53 @@ It returns None.
 
 ```python
 x = set([1, 2, 3])
-x.clear(2)                               # None
-x                                        # set([])
+x.clear()                                 # None
+x                                         # set([])
+```
+
+<a id='set·copy'></a>
+### set·copy
+
+`S.copy()` returns a new mutable shallow copy of `S`. The copy preserves the
+source's insertion order and shares its elements. The result is mutable even
+when `S` is frozen.
+
+```python
+x = set([1, 2])
+y = x.copy()
+y.add(3)
+x                                         # set([1, 2])
+y                                         # set([1, 2, 3])
 ```
 
 <a id='set·difference'></a>
 ### set·difference
 
-`S.difference(y)` returns a new set into which have been inserted all the elements of set S which are not in y.
-
-y can be any type of iterable (e.g. set, list, tuple).
+`S.difference(iterable...)` returns a new set containing the elements of `S`
+that occur in none of the supplied iterable sequences. With no arguments, it
+returns a mutable shallow copy of `S`. Remaining elements retain their relative
+order from `S`.
 
 ```python
 x = set([1, 2, 3])
-x.difference([3, 4, 5])                   # set([1, 2])
+x.difference([3, 4], [5])                 # set([1, 2])
+```
+
+<a id='set·difference_update'></a>
+### set·difference_update
+
+`S.difference_update(iterable...)` removes from `S` every element found in any
+supplied iterable sequence and returns `None`. With no arguments, it leaves `S`
+unchanged. Remaining elements retain their relative insertion order.
+
+The operation fails if `S` is frozen or has active iterators. An operand must
+be a StarlarkX iterable, and each element tested for membership must be
+hashable.
+
+```python
+x = set([1, 2, 3, 4])
+x.difference_update([2], (4, 5))          # None
+x                                         # set([1, 3])
 ```
 
 <a id='set·discard'></a>
@@ -3971,13 +4009,49 @@ x                                        # set([1, 3])
 <a id='set·intersection'></a>
 ### set·intersection
 
-`S.intersection(y)` returns a new set into which have been inserted all the elements of set S which are also in y.
+`S.intersection(iterable...)` returns a new set containing the elements found
+in `S` and every supplied iterable sequence. With no arguments, it returns a
+mutable shallow copy of `S`.
 
-y can be any type of iterable (e.g. set, list, tuple).
+For one or more operands, result order follows the last iterable's order,
+filtered by membership in `S` and all preceding operands. Repeated elements
+are inserted only once.
 
 ```python
-x = set([1, 2, 3])
-x.intersection([3, 4, 5])                # set([3])
+x = set([1, 2, 3, 4])
+x.intersection([2, 3, 4], (3, 4, 5))      # set([3, 4])
+```
+
+<a id='set·intersection_update'></a>
+### set·intersection_update
+
+`S.intersection_update(iterable...)` replaces `S` with its intersection with
+every supplied iterable sequence and returns `None`. With no arguments, its
+contents and order are unchanged. The resulting order is the same as for
+[`intersection`](#set·intersection).
+
+The operation fails if `S` is frozen or has active iterators. An operand must
+be a StarlarkX iterable, and each element tested for membership must be
+hashable.
+
+```python
+x = set([1, 2, 3, 4])
+x.intersection_update([2, 3, 4], (3, 4, 5)) # None
+x                                           # set([3, 4])
+```
+
+<a id='set·isdisjoint'></a>
+### set·isdisjoint
+
+`S.isdisjoint(iterable)` returns `True` if `S` has no element in common with
+the iterable, and `False` otherwise. It stops at the first common element, so
+later iterable elements are not consumed or tested. Membership uses StarlarkX
+hashing and equality.
+
+```python
+set([1, 2]).isdisjoint([3, 4])            # True
+set([1, 2]).isdisjoint([2, 3])            # False
+set([1]).isdisjoint(set([True]))          # True
 ```
 
 <a id='set·issubset'></a>
@@ -4037,13 +4111,33 @@ x.remove(2)                             # error: element not found
 <a id='set·symmetric_difference'></a>
 ### set·symmetric_difference
 
-`S.symmetric_difference(y)` creates a new set into which is inserted all of the items which are in S but not y, followed by all of the items which are in y but not S.
-
-y can be any type of iterable (e.g. set, list, tuple).
+`S.symmetric_difference(iterable)` returns a new set containing elements found
+in exactly one of `S` and the iterable. The iterable is treated as a set, so a
+repeated value has no additional effect. Elements found only in `S` retain
+their relative order, followed by new elements in first-occurrence order from
+the iterable.
 
 ```python
 x = set([1, 2, 3])
-x.symmetric_difference([3, 4, 5])         # set([1, 2, 4, 5])
+x.symmetric_difference([3, 4, 4, 5])     # set([1, 2, 4, 5])
+```
+
+<a id='set·symmetric_difference_update'></a>
+### set·symmetric_difference_update
+
+`S.symmetric_difference_update(iterable)` replaces `S` with the elements
+found in exactly one of `S` and the iterable and returns `None`. As with
+[`symmetric_difference`](#set·symmetric_difference), repeated iterable values
+have no additional effect, retained elements keep their relative order, and
+new elements follow in first-occurrence order.
+
+The operation fails if `S` is frozen or has active iterators. The operand must
+be a StarlarkX iterable whose elements are hashable.
+
+```python
+x = set([1, 2])
+x.symmetric_difference_update([2, 3, 3]) # None
+x                                         # set([1, 3])
 ```
 
 <a id='set·union'></a>

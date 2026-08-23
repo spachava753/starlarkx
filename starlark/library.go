@@ -150,18 +150,23 @@ var (
 	}
 
 	setMethods = map[string]*Builtin{
-		"add":                  NewBuiltin("add", set_add),
-		"clear":                NewBuiltin("clear", set_clear),
-		"difference":           NewBuiltin("difference", set_difference),
-		"discard":              NewBuiltin("discard", set_discard),
-		"intersection":         NewBuiltin("intersection", set_intersection),
-		"issubset":             NewBuiltin("issubset", set_issubset),
-		"issuperset":           NewBuiltin("issuperset", set_issuperset),
-		"pop":                  NewBuiltin("pop", set_pop),
-		"remove":               NewBuiltin("remove", set_remove),
-		"symmetric_difference": NewBuiltin("symmetric_difference", set_symmetric_difference),
-		"union":                NewBuiltin("union", set_union),
-		"update":               NewBuiltin("update", set_update),
+		"add":                         NewBuiltin("add", set_add),
+		"clear":                       NewBuiltin("clear", set_clear),
+		"copy":                        NewBuiltin("copy", set_copy),
+		"difference":                  NewBuiltin("difference", set_difference),
+		"difference_update":           NewBuiltin("difference_update", set_difference_update),
+		"discard":                     NewBuiltin("discard", set_discard),
+		"intersection":                NewBuiltin("intersection", set_intersection),
+		"intersection_update":         NewBuiltin("intersection_update", set_intersection_update),
+		"isdisjoint":                  NewBuiltin("isdisjoint", set_isdisjoint),
+		"issubset":                    NewBuiltin("issubset", set_issubset),
+		"issuperset":                  NewBuiltin("issuperset", set_issuperset),
+		"pop":                         NewBuiltin("pop", set_pop),
+		"remove":                      NewBuiltin("remove", set_remove),
+		"symmetric_difference":        NewBuiltin("symmetric_difference", set_symmetric_difference),
+		"symmetric_difference_update": NewBuiltin("symmetric_difference_update", set_symmetric_difference_update),
+		"union":                       NewBuiltin("union", set_union),
+		"update":                      NewBuiltin("update", set_update),
 	}
 )
 
@@ -2337,36 +2342,85 @@ func set_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 	return None, nil
 }
 
-// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·difference.
-func set_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	// TODO: support multiple others: s.difference(*others)
-	var other Iterable
-	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &other); err != nil {
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·copy.
+func set_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
-	iter := other.Iterate()
-	defer iter.Done()
-	diff, err := b.Receiver().(*Set).Difference(iter)
-	if err != nil {
+	return b.Receiver().(*Set).clone(), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·difference.
+func set_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	diff := b.Receiver().(*Set).clone()
+	if err := setDifferenceUpdate(diff, args, kwargs); err != nil {
 		return nil, nameErr(b, err)
 	}
 	return diff, nil
 }
 
-// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set_intersection.
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·difference_update.
+func set_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if len(kwargs) > 0 {
+		return nil, nameErr(b, "does not accept keyword arguments")
+	}
+	recv := b.Receiver().(*Set)
+	if err := recv.ht.checkMutable("apply difference_update to"); err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := setDifferenceUpdate(recv, args, nil); err != nil {
+		return nil, nameErr(b, err)
+	}
+	return None, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·intersection.
 func set_intersection(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	// TODO: support multiple others: s.difference(*others)
+	intersection, err := setIntersection(b.Receiver().(*Set), args, kwargs)
+	if err != nil {
+		return nil, nameErr(b, err)
+	}
+	return intersection, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·intersection_update.
+func set_intersection_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if len(kwargs) > 0 {
+		return nil, nameErr(b, "does not accept keyword arguments")
+	}
+	recv := b.Receiver().(*Set)
+	if err := recv.ht.checkMutable("apply intersection_update to"); err != nil {
+		return nil, nameErr(b, err)
+	}
+	intersection, err := setIntersection(recv, args, nil)
+	if err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := recv.ht.checkMutable("apply intersection_update to"); err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := recv.Clear(); err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := recv.ht.addAll(&intersection.ht); err != nil {
+		return nil, nameErr(b, err)
+	}
+	return None, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·isdisjoint.
+func set_isdisjoint(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
-	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &other); err != nil {
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &other); err != nil {
 		return nil, err
 	}
 	iter := other.Iterate()
 	defer iter.Done()
-	diff, err := b.Receiver().(*Set).Intersection(iter)
+	disjoint, err := b.Receiver().(*Set).IsDisjoint(iter)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
-	return diff, nil
+	return Bool(disjoint), nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set_issubset.
@@ -2456,7 +2510,7 @@ func set_remove(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·symmetric_difference.
 func set_symmetric_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
-	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &other); err != nil {
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &other); err != nil {
 		return nil, err
 	}
 	iter := other.Iterate()
@@ -2466,6 +2520,42 @@ func set_symmetric_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple)
 		return nil, nameErr(b, err)
 	}
 	return diff, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·symmetric_difference_update.
+func set_symmetric_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var other Iterable
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &other); err != nil {
+		return nil, err
+	}
+	recv := b.Receiver().(*Set)
+	if err := recv.ht.checkMutable("apply symmetric_difference_update to"); err != nil {
+		return nil, nameErr(b, err)
+	}
+
+	var diff *Set
+	if err := func() error {
+		iter := other.Iterate()
+		defer iter.Done()
+		result, err := recv.SymmetricDifference(iter)
+		if err != nil {
+			return err
+		}
+		diff = result.(*Set)
+		return nil
+	}(); err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := recv.ht.checkMutable("apply symmetric_difference_update to"); err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := recv.Clear(); err != nil {
+		return nil, nameErr(b, err)
+	}
+	if err := recv.ht.addAll(&diff.ht); err != nil {
+		return nil, nameErr(b, err)
+	}
+	return None, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·union.
@@ -2582,6 +2672,66 @@ func updateDict(dict *Dict, updates Tuple, kwargs []Tuple) error {
 	}
 
 	return nil
+}
+
+func setDifferenceUpdate(s *Set, args Tuple, kwargs []Tuple) error {
+	if len(kwargs) > 0 {
+		return errors.New("does not accept keyword arguments")
+	}
+
+	for i, arg := range args {
+		iterable, ok := arg.(Iterable)
+		if !ok {
+			return fmt.Errorf("argument #%d is not iterable: %s", i+1, arg.Type())
+		}
+		if other, ok := iterable.(*Set); ok && other == s {
+			if err := s.Clear(); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := func() error {
+			iter := iterable.Iterate()
+			defer iter.Done()
+			var elem Value
+			for iter.Next(&elem) {
+				if _, err := s.Delete(elem); err != nil {
+					return err
+				}
+			}
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setIntersection(s *Set, args Tuple, kwargs []Tuple) (*Set, error) {
+	if len(kwargs) > 0 {
+		return nil, errors.New("does not accept keyword arguments")
+	}
+
+	intersection := s.clone()
+	for i, arg := range args {
+		iterable, ok := arg.(Iterable)
+		if !ok {
+			return nil, fmt.Errorf("argument #%d is not iterable: %s", i+1, arg.Type())
+		}
+		if err := func() error {
+			iter := iterable.Iterate()
+			defer iter.Done()
+			result, err := intersection.Intersection(iter)
+			if err != nil {
+				return err
+			}
+			intersection = result.(*Set)
+			return nil
+		}(); err != nil {
+			return nil, err
+		}
+	}
+	return intersection, nil
 }
 
 func setUpdate(s *Set, args Tuple, kwargs []Tuple) error {

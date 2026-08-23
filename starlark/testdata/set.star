@@ -150,16 +150,103 @@ def test_update_no_arg():
 
 test_update_no_arg()
 
-# intersection, set & set or set.intersection(iterable)
+# copy
+copy_source = set([1, 2])
+freeze(copy_source)
+copy_result = copy_source.copy()
+assert.eq(list(copy_result), [1, 2])
+copy_result.add(3)
+assert.eq(list(copy_source), [1, 2])
+assert.eq(list(copy_result), [1, 2, 3])
+assert.fails(lambda: copy_source.copy(1), "copy: got 1 arguments, want 0")
+
+# difference_update
+
+def test_difference_update():
+    s = set([1, 2, 3, 4])
+    assert.eq(s.difference_update([2, 5], set([4])), None)
+    assert.eq(list(s), [1, 3])
+    assert.eq(s.difference_update(), None)
+    assert.eq(list(s), [1, 3])
+    s.difference_update(s)
+    assert.eq(s, set())
+
+test_difference_update()
+assert.fails(lambda: set([1]).difference_update(1), "difference_update: argument #1 is not iterable: int")
+assert.fails(lambda: set([1]).difference_update(other = [1]), "difference_update: does not accept keyword arguments")
+
+# intersection_update
+
+def test_intersection_update():
+    s = set([1, 2, 3, 4])
+    assert.eq(s.intersection_update([2, 3, 4], (3, 4, 5)), None)
+    assert.eq(s, set([3, 4]))
+    assert.eq(s.intersection_update(), None)
+    assert.eq(s, set([3, 4]))
+    s.intersection_update(s)
+    assert.eq(s, set([3, 4]))
+
+test_intersection_update()
+assert.fails(lambda: set([1]).intersection_update(1), "intersection_update: argument #1 is not iterable: int")
+assert.fails(lambda: set([1]).intersection_update(other = [1]), "intersection_update: does not accept keyword arguments")
+
+# isdisjoint
+assert.true(set([1, 2]).isdisjoint([3, 4]))
+assert.true(not set([1, 2]).isdisjoint((2, 3)))
+assert.true(set().isdisjoint(set()))
+assert.true(set([1]).isdisjoint(set([True]))) # bool is distinct from int in StarlarkX
+assert.true(not set([1]).isdisjoint([1, []])) # stop before the unhashable value
+assert.fails(lambda: set([1]).isdisjoint([[]]), "isdisjoint: unhashable type: list")
+assert.fails(lambda: set([1]).isdisjoint(), "isdisjoint: got 0 arguments, want 1")
+
+# symmetric_difference_update
+
+def test_symmetric_difference_update():
+    s = set([1, 2])
+    assert.eq(s.symmetric_difference_update([2, 3, 3]), None)
+    assert.eq(list(s), [1, 3])
+    s.symmetric_difference_update(s)
+    assert.eq(s, set())
+
+test_symmetric_difference_update()
+assert.fails(lambda: set([1]).symmetric_difference_update(), "symmetric_difference_update: got 0 arguments, want 1")
+assert.fails(lambda: set([1]).symmetric_difference_update([2], [3]), "symmetric_difference_update: got 2 arguments, want 1")
+
+# New mutators retain StarlarkX freezing and active-iteration safety.
+frozen_difference_update = set([1])
+freeze(frozen_difference_update)
+assert.fails(lambda: frozen_difference_update.difference_update([]), "difference_update: cannot apply difference_update to frozen hash table")
+frozen_intersection_update = set([1])
+freeze(frozen_intersection_update)
+assert.fails(lambda: frozen_intersection_update.intersection_update([1]), "intersection_update: cannot apply intersection_update to frozen hash table")
+frozen_symmetric_difference_update = set([1])
+freeze(frozen_symmetric_difference_update)
+assert.fails(lambda: frozen_symmetric_difference_update.symmetric_difference_update([]), "symmetric_difference_update: cannot apply symmetric_difference_update to frozen hash table")
+
+def update_during_iteration(s, method, arg):
+    for _ in s:
+        method(arg)
+
+iterated_difference_update = set([1])
+assert.fails(lambda: update_during_iteration(iterated_difference_update, iterated_difference_update.difference_update, []), "difference_update: cannot apply difference_update to hash table during iteration")
+iterated_intersection_update = set([1])
+assert.fails(lambda: update_during_iteration(iterated_intersection_update, iterated_intersection_update.intersection_update, [1]), "intersection_update: cannot apply intersection_update to hash table during iteration")
+iterated_symmetric_difference_update = set([1])
+assert.fails(lambda: update_during_iteration(iterated_symmetric_difference_update, iterated_symmetric_difference_update.symmetric_difference_update, []), "symmetric_difference_update: cannot apply symmetric_difference_update to hash table during iteration")
+
+# intersection, set & set or set.intersection(iterable...)
 assert.eq(list(set("a".elems()) & set("b".elems())), [])
 assert.eq(list(set("ab".elems()) & set("bc".elems())), ["b"])
 assert.eq(list(set("a".elems()).intersection("b".elems())), [])
 assert.eq(list(set("ab".elems()).intersection("bc".elems())), ["b"])
+assert.eq(set([1, 2]).intersection(), set([1, 2]))
+assert.eq(set([1, 2, 3, 4]).intersection([2, 3, 4], (3, 4, 5)), set([3, 4]))
 
 # symmetric difference, set ^ set or set.symmetric_difference(iterable)
 assert.eq(set([1, 2, 3]) ^ set([4, 5, 3]), set([1, 2, 4, 5]))
 assert.eq(set([1,2,3,4]).symmetric_difference([3,4,5,6]), set([1,2,5,6]))
 assert.eq(set([1,2,3,4]).symmetric_difference(set([])), set([1,2,3,4]))
+assert.eq(set([1, 2]).symmetric_difference([2, 3, 3]), set([1, 3]))
 
 def test_set_augmented_assign():
     x = set([1, 2, 3])
@@ -269,11 +356,13 @@ other_clear_set = set([1,2,3])
 freeze(other_clear_set)
 assert.fails(lambda: other_clear_set.clear(), "clear: cannot clear frozen hash table")
 
-# difference: set - set or set.difference(iterable)
+# difference: set - set or set.difference(iterable...)
 assert.eq(set([1,2,3,4]).difference([1,2,3,4]), set([]))
 assert.eq(set([1,2,3,4]).difference([1,2]), set([3,4]))
 assert.eq(set([1,2,3,4]).difference([]), set([1,2,3,4]))
 assert.eq(set([1,2,3,4]).difference(set([1,2,3])), set([4]))
+assert.eq(set([1,2,3,4]).difference(), set([1,2,3,4]))
+assert.eq(set([1,2,3,4]).difference([1], (2, 5)), set([3,4]))
 
 assert.eq(set([1,2,3,4]) - set([1,2,3,4]), set())
 assert.eq(set([1,2,3,4]) - set([1,2]), set([3,4]))

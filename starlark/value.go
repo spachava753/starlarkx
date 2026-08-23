@@ -1299,6 +1299,20 @@ func (s *Set) Difference(other Iterator) (Value, error) {
 	return diff, nil
 }
 
+func (s *Set) IsDisjoint(other Iterator) (bool, error) {
+	var x Value
+	for other.Next(&x) {
+		found, err := s.Has(x)
+		if err != nil {
+			return false, err
+		}
+		if found {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (s *Set) IsSuperset(other Iterator) (bool, error) {
 	var x Value
 	for other.Next(&x) {
@@ -1340,15 +1354,19 @@ func (s *Set) Intersection(other Iterator) (Value, error) {
 }
 
 func (s *Set) SymmetricDifference(other Iterator) (Value, error) {
+	otherset := new(Set)
+	if err := otherset.InsertAll(other); err != nil {
+		return nil, err
+	}
+
 	diff := s.clone()
-	var x Value
-	for other.Next(&x) {
-		found, err := diff.Delete(x)
+	for e := otherset.ht.head; e != nil; e = e.next {
+		found, err := diff.Delete(e.key)
 		if err != nil {
 			return nil, err
 		}
 		if !found {
-			diff.Insert(x) // can't fail
+			diff.Insert(e.key) // can't fail
 		}
 	}
 	return diff, nil
