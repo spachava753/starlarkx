@@ -88,8 +88,8 @@ before resolving any of them.
 | Execution / Module loading | `OPEN` | - | - | - | - |
 | Values / Booleans and numbers | `STARLARK` | `DEFAULT` | `YES` | Keep `bool` distinct from numeric types; require explicit `int` or `float` conversion before numeric use. | Preserve Starlark's type clarity rather than adopting Python's historical `bool`-as-`int` relationship. |
 | Values / Text model | `OPEN` | - | - | - | - |
-| Values / String iteration | `OPEN` | - | - | - | - |
-| Values / String offsets | `OPEN` | - | - | - | - |
+| Values / String iteration | `STARLARK` | `DEFAULT` | `YES` | Keep strings non-iterable in loops, comprehensions, starred calls, and iterable-consuming built-ins and methods; require `.elems()`, `.elem_ords()`, `.codepoints()`, or `.codepoint_ords()` to select an explicit iterable view. Substring membership remains supported separately. | Reject accidental use of a scalar string where a collection was intended and require programs to choose explicitly between encoded elements and Unicode code points. |
+| Values / String offsets | `STARLARK` | `DEFAULT` | `YES` | Measure string positions in UTF-8 bytes: `len`, indexing, and slicing use byte coordinates; `start`/`end` bounds for `count`, `find`, `index`, `rfind`, `rindex`, `startswith`, and `endswith` are byte offsets; and search methods return byte offsets. Empty-pattern `count` and `replace` retain decoded code-point boundaries rather than splitting valid UTF-8 encodings. | Keep all exposed string coordinates consistent with Go Starlark's byte-backed string representation while preserving safe textual behavior for empty-pattern operations. |
 | Values / Bytes construction | `OPEN` | - | - | - | - |
 | Values / Bytes literals | `OPEN` | - | - | - | - |
 | Values / Bytes indexing/iteration | `OPEN` | - | - | - | - |
@@ -163,7 +163,13 @@ before resolving any of them.
 | Methods / Dictionary `copy` | `STARLARKX` | `DEFAULT` | `YES` | Return a new mutable shallow dictionary copy with the source's insertion order and shared keys and values, whether the source dictionary is mutable or frozen. | Provide Python's familiar shallow-copy operation while preserving StarlarkX's frozen published values and enabling a mutable locally owned outer dictionary. |
 | Methods / Dictionary `fromkeys` | `OPEN` | - | - | - | - |
 | Methods / Set method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose Python's complete named set instance-method surface; make `copy` return a new mutable shallow set; let `difference`, `difference_update`, `intersection`, and `intersection_update` accept zero or more iterable operands; make `isdisjoint` short-circuit and `symmetric_difference_update` accept one iterable; deduplicate symmetric-difference operands; and make the three added mutators return `None` while rejecting frozen sets and sets with active iterators. All methods use StarlarkX iterability, equality, hashing, and insertion/operation order. | Provide Python's familiar complete set method API and core algorithms while preserving StarlarkX's value model, non-iterable strings, deterministic order, frozen published values, and mutation-safety rules. |
-| Methods / String method surface | `OPEN` | - | - | - | - |
+| Methods / String alignment, zero-fill, and tab expansion | `STARLARKX` | `DEFAULT` | `YES` | Expose `center(width, fillchar=" ", /)`, `ljust(width, fillchar=" ", /)`, `rjust(width, fillchar=" ", /)`, `zfill(width, /)`, and `expandtabs(tabsize=8)` with Python's padding distribution, sign handling, tab stops, and line resets. Widths and columns count UTF-8 bytes, padding fill characters must be exactly one byte, and `tabsize` may be positional or named. | Add familiar Python text-layout operations while keeping their measurements coherent with Starlark's byte-based `len`, indexing, slicing, and offsets. |
+| Methods / String `casefold` and `swapcase` | `OPEN` | - | - | - | - |
+| Methods / String `isascii` | `PYTHON` | `DEFAULT` | `YES` | Return true for an empty string or a string containing only bytes in U+0000 through U+007F, and false otherwise. | Match Python's encoding-independent ASCII query; every all-ASCII Starlark string is valid UTF-8. |
+| Methods / String `isdecimal`, `isnumeric`, and `isprintable` | `STARLARKX` | `DEFAULT` | `YES` | Use Python's predicate definitions with the Unicode character assignments and properties supplied by the active Go toolchain. Return false for invalid UTF-8. Preserve Python's empty-string results: false for `isdecimal` and `isnumeric`, true for `isprintable`. | Provide familiar Unicode predicates while following Go's current Unicode support and giving byte-fragment strings deterministic non-text behavior. |
+| Methods / String `isidentifier` | `STARLARKX` | `DEFAULT` | `YES` | Return true exactly for non-empty strings with StarlarkX lexical identifier shape: a Go-Unicode letter or underscore followed by Go-Unicode letters, ASCII digits, or underscores. Return false for invalid UTF-8. Test lexical shape only, so keywords such as `def` return true. | Make the predicate answer whether text has the shape accepted by the StarlarkX scanner rather than importing Python's broader XID grammar. |
+| Methods / String `encode` | `OPEN` | - | - | - | - |
+| Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
 | Dialect / `Set` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.Set`: an explicit zero-valued option set rejects references to the universal `set` built-in, while `Set: true` permits them; legacy APIs continue deriving the value from `resolve.AllowSet`, whose default is true. | Keep Go Starlark's host-selectable set extension and its established modern-versus-legacy defaults. |
@@ -369,10 +375,12 @@ Built-in type methods are also a subset rather than a compatibility layer:
   StarlarkX iterables rather than Python iterables, use StarlarkX equality and
   hashing, preserve deterministic insertion/operation order, and apply
   StarlarkX freezing and active-iteration mutation rules.
-- Strings add explicit byte/code-point iterator methods but omit Python methods
-  including `casefold`, `center`, `encode`, `expandtabs`, `isascii`,
-  `isdecimal`, `isidentifier`, `isnumeric`, `isprintable`, `ljust`,
-  `maketrans`, `rjust`, `swapcase`, `translate`, and `zfill`.
+- Strings add explicit byte/code-point iterator methods, byte-measured
+  `center`, `expandtabs`, `ljust`, `rjust`, and `zfill`, and the predicates
+  `isascii`, `isdecimal`, `isidentifier`, `isnumeric`, and `isprintable`.
+  Unicode predicates follow the active Go Unicode tables and reject invalid
+  UTF-8; `isidentifier` uses StarlarkX lexical shape. Strings still omit
+  Python's `casefold`, `encode`, `maketrans`, `swapcase`, and `translate`.
 - Bytes provide `.decode()` and `.elems()`. Decoding currently supports UTF-8;
   the other Python bytes methods are absent. Tuples, ranges, integers, and
   floats expose no Python-style methods.
@@ -430,9 +438,9 @@ language specification now describes its actual effect.
 
 A practical extension plan can group work by architectural depth:
 
-1. **Change local semantics**: Unicode string indexing/iteration, bytes
-   behavior, NaN semantics, eager/lazy return types, builtin signatures, and
-   argument evaluation order. These changes are localized conceptually but can
+1. **Change local semantics**: Remaining text-model and bytes behavior, NaN
+   semantics, eager/lazy return types, builtin signatures, and argument
+   evaluation order. These changes are localized conceptually but can
    break Starlark code.
 2. **Extend parser and evaluator**: literal concatenation, numeric separators,
    richer unpacking, slice assignment, loop `else`, f-strings, and additional

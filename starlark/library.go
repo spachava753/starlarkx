@@ -112,24 +112,32 @@ var (
 
 	stringMethods = map[string]*Builtin{
 		"capitalize":     NewBuiltin("capitalize", string_capitalize),
+		"center":         NewBuiltin("center", string_justify),
 		"codepoint_ords": NewBuiltin("codepoint_ords", string_iterable),
 		"codepoints":     NewBuiltin("codepoints", string_iterable), // sic
 		"count":          NewBuiltin("count", string_count),
 		"elem_ords":      NewBuiltin("elem_ords", string_iterable),
 		"elems":          NewBuiltin("elems", string_iterable),      // sic
 		"endswith":       NewBuiltin("endswith", string_startswith), // sic
+		"expandtabs":     NewBuiltin("expandtabs", string_expandtabs),
 		"find":           NewBuiltin("find", string_find),
 		"format":         NewBuiltin("format", string_format),
 		"format_map":     NewBuiltin("format_map", string_format_map),
 		"index":          NewBuiltin("index", string_index),
 		"isalnum":        NewBuiltin("isalnum", string_isalnum),
 		"isalpha":        NewBuiltin("isalpha", string_isalpha),
+		"isascii":        NewBuiltin("isascii", string_unicode_predicate),
+		"isdecimal":      NewBuiltin("isdecimal", string_unicode_predicate),
 		"isdigit":        NewBuiltin("isdigit", string_isdigit),
+		"isidentifier":   NewBuiltin("isidentifier", string_unicode_predicate),
 		"islower":        NewBuiltin("islower", string_islower),
+		"isnumeric":      NewBuiltin("isnumeric", string_unicode_predicate),
+		"isprintable":    NewBuiltin("isprintable", string_unicode_predicate),
 		"isspace":        NewBuiltin("isspace", string_isspace),
 		"istitle":        NewBuiltin("istitle", string_istitle),
 		"isupper":        NewBuiltin("isupper", string_isupper),
 		"join":           NewBuiltin("join", string_join),
+		"ljust":          NewBuiltin("ljust", string_justify),
 		"lower":          NewBuiltin("lower", string_lower),
 		"lstrip":         NewBuiltin("lstrip", string_strip), // sic
 		"partition":      NewBuiltin("partition", string_partition),
@@ -138,6 +146,7 @@ var (
 		"replace":        NewBuiltin("replace", string_replace),
 		"rfind":          NewBuiltin("rfind", string_rfind),
 		"rindex":         NewBuiltin("rindex", string_rindex),
+		"rjust":          NewBuiltin("rjust", string_justify),
 		"rpartition":     NewBuiltin("rpartition", string_partition), // sic
 		"rsplit":         NewBuiltin("rsplit", string_split),         // sic
 		"rstrip":         NewBuiltin("rstrip", string_strip),         // sic
@@ -147,6 +156,7 @@ var (
 		"strip":          NewBuiltin("strip", string_strip),
 		"title":          NewBuiltin("title", string_title),
 		"upper":          NewBuiltin("upper", string_upper),
+		"zfill":          NewBuiltin("zfill", string_zfill),
 	}
 
 	setMethods = map[string]*Builtin{
@@ -1640,6 +1650,114 @@ func string_capitalize(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value
 	return String(res.String()), nil
 }
 
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·center
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·ljust
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·rjust
+func string_justify(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var width int
+	fill := " "
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &width, &fill); err != nil {
+		return nil, err
+	}
+	if len(fill) != 1 {
+		return nil, nameErr(b, "fill character must be exactly one byte long")
+	}
+
+	recv := string(b.Receiver().(String))
+	if width <= len(recv) {
+		return String(recv), nil
+	}
+	if width >= maxAlloc {
+		return nil, nameErr(b, "result is too large")
+	}
+
+	padding := width - len(recv)
+	left, right := 0, 0
+	switch b.Name()[0] {
+	case 'c':
+		left = padding/2 + (padding & width & 1)
+		right = padding - left
+	case 'l':
+		right = padding
+	case 'r':
+		left = padding
+	}
+
+	var out strings.Builder
+	out.Grow(width)
+	out.WriteString(strings.Repeat(fill, left))
+	out.WriteString(recv)
+	out.WriteString(strings.Repeat(fill, right))
+	return String(out.String()), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·expandtabs
+func string_expandtabs(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	tabsizeArg := int32(8)
+	if err := UnpackArgs(b.Name(), args, kwargs, "tabsize?", &tabsizeArg); err != nil {
+		return nil, err
+	}
+	tabsize := int(tabsizeArg)
+
+	recv := string(b.Receiver().(String))
+	if !strings.Contains(recv, "\t") {
+		return String(recv), nil
+	}
+
+	var out strings.Builder
+	out.Grow(len(recv))
+	column := 0
+	for i := 0; i < len(recv); i++ {
+		switch c := recv[i]; c {
+		case '\t':
+			if tabsize > 0 {
+				spaces := tabsize - column%tabsize
+				if spaces > maxAlloc-out.Len() {
+					return nil, nameErr(b, "result is too large")
+				}
+				out.WriteString(strings.Repeat(" ", spaces))
+				column += spaces
+			}
+		case '\n', '\r':
+			out.WriteByte(c)
+			column = 0
+		default:
+			out.WriteByte(c)
+			column++
+		}
+	}
+	return String(out.String()), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·zfill
+func string_zfill(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var width int
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &width); err != nil {
+		return nil, err
+	}
+
+	recv := string(b.Receiver().(String))
+	if width <= len(recv) {
+		return String(recv), nil
+	}
+	if width >= maxAlloc {
+		return nil, nameErr(b, "result is too large")
+	}
+
+	padding := width - len(recv)
+	var out strings.Builder
+	out.Grow(width)
+	if len(recv) > 0 && (recv[0] == '+' || recv[0] == '-') {
+		out.WriteByte(recv[0])
+		out.WriteString(strings.Repeat("0", padding))
+		out.WriteString(recv[1:])
+	} else {
+		out.WriteString(strings.Repeat("0", padding))
+		out.WriteString(recv)
+	}
+	return String(out.String()), nil
+}
+
 // string_iterable returns an unspecified iterable value whose iterator yields:
 // - elems: successive 1-byte substrings
 // - codepoints: successive substrings that encode a single Unicode code point.
@@ -1874,6 +1992,80 @@ func string_isdigit(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 		}
 	}
 	return Bool(recv != ""), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isascii
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isdecimal
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isidentifier
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isnumeric
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isprintable
+func string_unicode_predicate(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	recv := string(b.Receiver().(String))
+
+	if b.Name() == "isascii" {
+		for i := 0; i < len(recv); i++ {
+			if recv[i] >= utf8.RuneSelf {
+				return False, nil
+			}
+		}
+		return True, nil
+	}
+	if !utf8.ValidString(recv) {
+		return False, nil
+	}
+
+	switch b.Name() {
+	case "isdecimal":
+		if recv == "" {
+			return False, nil
+		}
+		for _, r := range recv {
+			if !unicode.IsDigit(r) {
+				return False, nil
+			}
+		}
+		return True, nil
+
+	case "isidentifier":
+		return Bool(isStarlarkIdentifier(recv)), nil
+
+	case "isnumeric":
+		if recv == "" {
+			return False, nil
+		}
+		for _, r := range recv {
+			if !isNumericRune(r) {
+				return False, nil
+			}
+		}
+		return True, nil
+
+	case "isprintable":
+		for _, r := range recv {
+			if !unicode.IsPrint(r) {
+				return False, nil
+			}
+		}
+		return True, nil
+	}
+	panic("unreachable")
+}
+
+// isStarlarkIdentifier matches the scanner's lexical identifier shape.
+func isStarlarkIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		start := r == '_' || unicode.IsLetter(r)
+		if !start && (i == 0 || r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·islower

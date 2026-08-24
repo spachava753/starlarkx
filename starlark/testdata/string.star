@@ -31,6 +31,32 @@ assert.fails(lambda: "abc" * 1000000 * 1000000, "excessive repeat \\(3000000 \\*
 assert.eq(len("Hello, 世界!"), 14)
 assert.eq(len("𐐷"), 4)  # U+10437 has a 4-byte UTF-8 encoding (and a 2-code UTF-16 encoding)
 
+# byte-width alignment and tab expansion
+assert.eq("abc".center(6), " abc  ")
+assert.eq("abc".center(7, "-"), "--abc--")
+assert.eq("é".center(4, "-"), "-é-")
+assert.eq("é".ljust(3, "."), "é.")
+assert.eq("é".rjust(3, "."), ".é")
+assert.eq("42".zfill(5), "00042")
+assert.eq("-42".zfill(5), "-0042")
+assert.eq("+42".zfill(5), "+0042")
+assert.eq("é".zfill(3), "0é")
+assert.fails(lambda: "x".center(3, "é"), "center: fill character must be exactly one byte long")
+assert.fails(lambda: "x".ljust(width = 3), "ljust: unexpected keyword arguments")
+assert.fails(lambda: "x".zfill(width = 3), "zfill: unexpected keyword arguments")
+
+assert.eq("01\t012\t0123\t01234".expandtabs(), "01      012     0123    01234")
+assert.eq("01\t012\t0123\t01234".expandtabs(4), "01  012 0123    01234")
+assert.eq("é\tx".expandtabs(4), "é  x")
+assert.eq("é\tx".expandtabs(tabsize = 4), "é  x")
+assert.eq("a\tb".expandtabs(0), "ab")
+assert.eq("a\tb".expandtabs(-1), "ab")
+assert.eq("a\tb\nc\td".expandtabs(4), "a   b\nc   d")
+
+# Empty patterns retain decoded code-point boundaries rather than splitting UTF-8.
+assert.eq("é".count(""), 2)
+assert.eq("é".replace("", "-"), "-é-")
+
 # chr & ord
 assert.eq(chr(65), "A")  # 1-byte UTF-8 encoding
 assert.eq(chr(1049), "Й")  # 2-byte UTF-8 encoding
@@ -45,6 +71,46 @@ assert.eq(ord("Й"[1:]), 0xFFFD)  # = Unicode replacement character
 assert.fails(lambda: ord("abc"), "string encodes 3 Unicode code points, want 1")
 assert.fails(lambda: ord(""), "string encodes 0 Unicode code points, want 1")
 assert.fails(lambda: ord("😿"[1:]), "string encodes 3 Unicode code points, want 1")  # 3 x 0xFFFD
+
+# Additional Python-named predicates use Go's Unicode tables. Invalid UTF-8 is false.
+invalid_text = "é"[0]
+assert.true("".isascii())
+assert.true("ASCII".isascii())
+assert.true(not "µ".isascii())
+assert.true(not invalid_text.isascii())
+
+assert.true("0123456789".isdecimal())
+assert.true("٠١٢٣٤٥٦٧٨٩".isdecimal())
+assert.true(not "²".isdecimal())
+assert.true(not "".isdecimal())
+assert.true(not invalid_text.isdecimal())
+
+assert.true("0123456789".isnumeric())
+assert.true("⅕".isnumeric())
+assert.true("²".isnumeric())
+assert.true("一".isnumeric())
+assert.true(not "abc".isnumeric())
+assert.true(not "".isnumeric())
+assert.true(not invalid_text.isnumeric())
+
+assert.true("".isprintable())
+assert.true("Hello, 世界".isprintable())
+assert.true(" ".isprintable())
+assert.true("�".isprintable())
+assert.true(not "\t".isprintable())
+assert.true(not "\n".isprintable())
+assert.true(not invalid_text.isprintable())
+
+assert.true("hello".isidentifier())
+assert.true("_x2".isidentifier())
+assert.true("α".isidentifier())
+assert.true("def".isidentifier())  # Keywords still have identifier lexical shape.
+assert.true(not "2x".isidentifier())
+assert.true(not "a\u0301".isidentifier())  # Combining marks are not Starlark identifier elements.
+assert.true(not "x١".isidentifier())  # Starlark identifiers permit only ASCII digits.
+assert.true(not "".isidentifier())
+assert.true(not invalid_text.isidentifier())
+assert.fails(lambda: "x".isascii(1), "isascii: got 1 arguments, want 0")
 
 # string.codepoint_ords
 assert.eq(type("abcЙ😿".codepoint_ords()), "string.codepoints")
@@ -415,6 +481,7 @@ assert.eq("banana".count("a", 2), 2)
 assert.eq("banana".count("a", -4, -2), 1)
 assert.eq("banana".count("a", 1, 4), 2)
 assert.eq("banana".count("a", 0, -100), 0)
+assert.eq("aΩb".count("b", 0, 3), 0)  # end is a byte offset
 
 # str.{starts,ends}with
 assert.true("foo".endswith("oo"))
@@ -442,6 +509,8 @@ assert.true("abc".startswith("bc", 1))
 assert.true(not "abc".startswith("b", 999))
 assert.true("abc".endswith("ab", None, -1))
 assert.true(not "abc".endswith("b", None, -999))
+assert.true("aΩb".startswith("b", 3))  # start is a byte offset
+assert.true(not "aΩb".endswith("b", 0, 3))  # end is a byte offset
 
 # str.replace
 assert.eq("banana".replace("a", "o", 1), "bonana")
@@ -457,6 +526,10 @@ assert.eq("foofoo".rfind("ox"), -1)
 assert.eq("foofoo".rfind("oo", 1, 4), 1)
 assert.eq("foofoo".find(""), 0)
 assert.eq("foofoo".rfind(""), 6)
+assert.eq("aΩb".find("b"), 3)
+assert.eq("aΩb".rfind("b"), 3)
+assert.eq("aΩb".index("b"), 3)
+assert.eq("aΩb".rindex("b"), 3)
 
 # str.{,r}partition
 assert.eq("foo/bar/wiz".partition("/"), ("foo", "/", "bar/wiz"))

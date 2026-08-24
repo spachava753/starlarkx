@@ -544,6 +544,15 @@ Strings can represent arbitrary binary data, including zero bytes, but
 most strings contain text, encoded by convention using UTF-8.
 
 The built-in `len` function returns the number of bytes in a string.
+Integer indices, slice bounds, method `start` and `end` bounds, and positions
+returned by string search methods are all UTF-8 byte offsets. The `width`
+arguments of `center`, `ljust`, `rjust`, and `zfill`, and the columns counted by
+`expandtabs`, also use bytes.
+
+Textual operations such as case conversion and character classification still
+decode Unicode code points. Empty-pattern `count` and `replace` likewise use
+decoded code-point boundaries, so they do not insert boundaries within a valid
+multi-byte UTF-8 encoding.
 
 Strings may be concatenated with the `+` operator.
 
@@ -573,24 +582,32 @@ non-empty.
 Strings have several built-in methods:
 
 * [`capitalize`](#string·capitalize)
+* [`center`](#string·center)
 * [`codepoint_ords`](#string·codepoint_ords)
 * [`codepoints`](#string·codepoints)
 * [`count`](#string·count)
 * [`elem_ords`](#string·elem_ords)
 * [`elems`](#string·elems)
 * [`endswith`](#string·endswith)
+* [`expandtabs`](#string·expandtabs)
 * [`find`](#string·find)
 * [`format`](#string·format)
 * [`format_map`](#string·format_map)
 * [`index`](#string·index)
 * [`isalnum`](#string·isalnum)
 * [`isalpha`](#string·isalpha)
+* [`isascii`](#string·isascii)
+* [`isdecimal`](#string·isdecimal)
 * [`isdigit`](#string·isdigit)
+* [`isidentifier`](#string·isidentifier)
 * [`islower`](#string·islower)
+* [`isnumeric`](#string·isnumeric)
+* [`isprintable`](#string·isprintable)
 * [`isspace`](#string·isspace)
 * [`istitle`](#string·istitle)
 * [`isupper`](#string·isupper)
 * [`join`](#string·join)
+* [`ljust`](#string·ljust)
 * [`lower`](#string·lower)
 * [`lstrip`](#string·lstrip)
 * [`partition`](#string·partition)
@@ -599,6 +616,7 @@ Strings have several built-in methods:
 * [`removesuffix`](#string·removesuffix)
 * [`rfind`](#string·rfind)
 * [`rindex`](#string·rindex)
+* [`rjust`](#string·rjust)
 * [`rpartition`](#string·rpartition)
 * [`rsplit`](#string·rsplit)
 * [`rstrip`](#string·rstrip)
@@ -608,6 +626,7 @@ Strings have several built-in methods:
 * [`strip`](#string·strip)
 * [`title`](#string·title)
 * [`upper`](#string·upper)
+* [`zfill`](#string·zfill)
 
 <b>Implementation note:</b>
 The type of a string element varies across implementations.
@@ -4236,6 +4255,22 @@ lower case.
 "¿Por qué?".capitalize()		# "¿por qué?"
 ```
 
+<a id='string·center'></a>
+### string·center
+
+`S.center(width[, fillchar])` returns `S` centered in a string whose byte length
+is at least `width`. Padding uses the one-byte string `fillchar`, which defaults
+to a space. An odd padding byte is placed according to Python's centering rule.
+The method returns `S` unchanged if `width <= len(S)`.
+
+Both arguments are positional-only. `center` fails if `fillchar` is not exactly
+one byte long.
+
+```python
+"abc".center(7, "-")                    # "--abc--"
+"é".center(4, "-")                      # "-é-"; len("é") == 2
+```
+
 <a id='string·codepoint_ords'></a>
 ### string·codepoint_ords
 
@@ -4268,6 +4303,8 @@ See also: `string·codepoints`.
 `sub` within the string S, or, if the optional substring indices
 `start` and `end` are provided, within the designated substring of S.
 They are interpreted according to Starlark's [indexing conventions](#indexing).
+An empty `sub` matches at decoded code-point boundaries rather than between the
+bytes of a valid multi-byte UTF-8 encoding.
 
 ```python
 "hello, world!".count("o")              # 2
@@ -4291,6 +4328,21 @@ function reports whether any one of them is a suffix.
 'foo.cc'.endswith(('.cc', '.h'))         # True
 ```
 
+<a id='string·expandtabs'></a>
+### string·expandtabs
+
+`S.expandtabs(tabsize=8)` returns a copy of `S` in which each tab byte is
+replaced by enough spaces to reach the next multiple of `tabsize` bytes in the
+current line. A newline or carriage-return byte resets the column to zero.
+A non-positive `tabsize` removes tabs without inserting spaces.
+
+`tabsize` may be passed positionally or by name. Columns count UTF-8 bytes, not
+Unicode code points.
+
+```python
+"01\t012".expandtabs(4)                  # "01  012"
+"é\tx".expandtabs(4)                     # "é  x"; "é" occupies two bytes
+```
 
 <a id='string·find'></a>
 ### string·find
@@ -4441,6 +4493,33 @@ Unicode letters and digits.
 "".isalpha()                    # False
 ```
 
+<a id='string·isascii'></a>
+### string·isascii
+
+`S.isascii()` reports whether `S` is empty or every byte is in the ASCII range
+U+0000 through U+007F. Because every all-ASCII byte sequence is valid UTF-8,
+this matches Python's result.
+
+```python
+"ASCII".isascii()               # True
+"".isascii()                    # True
+"µ".isascii()                   # False
+```
+
+<a id='string·isdecimal'></a>
+### string·isdecimal
+
+`S.isdecimal()` reports whether `S` is non-empty, valid UTF-8 consisting only
+of Unicode decimal digits. Character assignments and decimal properties follow
+the Unicode tables supplied by the active Go toolchain. Invalid UTF-8 returns
+`False`.
+
+```python
+"0123456789".isdecimal()        # True
+"٠١٢٣٤٥٦٧٨٩".isdecimal()        # True
+"²".isdecimal()                 # False
+```
+
 <a id='string·isdigit'></a>
 ### string·isdigit
 
@@ -4450,6 +4529,24 @@ Unicode letters and digits.
 "123".isdigit()                 # True
 "Catch-22".isdigit()            # False
 "".isdigit()                    # False
+```
+
+<a id='string·isidentifier'></a>
+### string·isidentifier
+
+`S.isidentifier()` reports whether `S` has StarlarkX lexical identifier shape:
+a Unicode letter or underscore followed by Unicode letters, ASCII digits, or
+underscores. Letter classification follows the active Go Unicode tables.
+Keywords such as `def` have identifier shape and therefore return `True`.
+Invalid UTF-8 and the empty string return `False`.
+
+```python
+"hello".isidentifier()          # True
+"α".isidentifier()              # True
+"def".isidentifier()            # True
+"2x".isidentifier()             # False
+"a\u0301".isidentifier()        # False; combining marks are not accepted
+"x١".isidentifier()             # False; only ASCII digits are accepted
 ```
 
 <a id='string·islower'></a>
@@ -4462,6 +4559,37 @@ letter, and all such letters are lowercase.
 "hello, world".islower()        # True
 "Catch-22".islower()            # False
 "123".islower()                 # False
+```
+
+<a id='string·isnumeric'></a>
+### string·isnumeric
+
+`S.isnumeric()` reports whether `S` is non-empty, valid UTF-8 consisting only
+of code points whose Unicode numeric type is Decimal, Digit, or Numeric. This
+includes decimal digits, fractions, superscripts, and numeric ideographs.
+Character assignments follow the active Go Unicode tables. Invalid UTF-8
+returns `False`.
+
+```python
+"0123456789".isnumeric()        # True
+"⅕".isnumeric()                 # True
+"²".isnumeric()                 # True
+"一".isnumeric()                # True
+```
+
+<a id='string·isprintable'></a>
+### string·isprintable
+
+`S.isprintable()` reports whether `S` is valid UTF-8 and every code point is a
+Unicode Letter, Mark, Number, Punctuation, or Symbol, or the ASCII space.
+Character properties follow the active Go Unicode tables. The empty string
+returns `True`; invalid UTF-8 and other Separator or Other code points return
+`False`.
+
+```python
+"Hello, 世界".isprintable()      # True
+"".isprintable()                # True
+"\t".isprintable()              # False
 ```
 
 <a id='string·isspace'></a>
@@ -4513,6 +4641,21 @@ are strings.
 ```python
 ", ".join(["one", "two", "three"])      # "one, two, three"
 "a".join("ctmrn".codepoints())          # "catamaran"
+```
+
+<a id='string·ljust'></a>
+### string·ljust
+
+`S.ljust(width[, fillchar])` returns `S` followed by enough copies of the
+one-byte `fillchar` to reach `width` bytes. `fillchar` defaults to a space, and
+the method returns `S` unchanged if `width <= len(S)`.
+
+Both arguments are positional-only. `ljust` fails if `fillchar` is not exactly
+one byte long.
+
+```python
+"abc".ljust(6, ".")                     # "abc..."
+"é".ljust(3, ".")                       # "é."
 ```
 
 <a id='string·lower'></a>
@@ -4581,7 +4724,9 @@ removed if S ends with `suffix`, otherwise it returns S.
 `S.replace(old, new[, count])` returns a copy of string S with all
 occurrences of substring `old` replaced by `new`. If the optional
 argument `count`, which must be an `int`, is non-negative, it
-specifies a maximum number of occurrences to replace.
+specifies a maximum number of occurrences to replace. An empty `old` matches at
+decoded code-point boundaries rather than between the bytes of a valid
+multi-byte UTF-8 encoding.
 
 ```python
 "banana".replace("a", "o")		# "bonono"
@@ -4612,6 +4757,21 @@ _last_ occurrence.
 "bonbon".rindex("on")             # 4
 "bonbon".rindex("on", None, 5)    # 1                           (in "bonbo")
 "bonbon".rindex("on", 2, 5)       # error: substring not found  (in "nbo")
+```
+
+<a id='string·rjust'></a>
+### string·rjust
+
+`S.rjust(width[, fillchar])` returns enough copies of the one-byte `fillchar`
+followed by `S` to reach `width` bytes. `fillchar` defaults to a space, and the
+method returns `S` unchanged if `width <= len(S)`.
+
+Both arguments are positional-only. `rjust` fails if `fillchar` is not exactly
+one byte long.
+
+```python
+"abc".rjust(6, ".")                     # "...abc"
+"é".rjust(3, ".")                       # ".é"
 ```
 
 <a id='string·rpartition'></a>
@@ -4793,6 +4953,20 @@ Letters are converted to upper case at the start of words, lower case elsewhere.
 
 ```python
 "Hello, World!".upper()                 # "HELLO, WORLD!"
+```
+
+<a id='string·zfill'></a>
+### string·zfill
+
+`S.zfill(width)` returns `S` left-padded with ASCII zero bytes to reach `width`
+bytes. If `S` begins with `+` or `-`, padding is inserted after that sign. The
+method returns `S` unchanged if `width <= len(S)`. The argument is
+positional-only.
+
+```python
+"42".zfill(5)                            # "00042"
+"-42".zfill(5)                           # "-0042"
+"é".zfill(3)                             # "0é"
 ```
 
 ## Dialect differences
