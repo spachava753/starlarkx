@@ -85,7 +85,7 @@ before resolving any of them.
 | Execution / Recursion | `STARLARK` | `DEFAULT` | `YES` | Reject direct and mutual recursive calls unless an explicit dialect option enables them. | Keep default execution bounded and discourage computation-heavy configuration code. |
 | Execution / `while` | `STARLARK` | `DEFAULT` | `YES` | Reject `while` unless an explicit dialect option enables it. | Preserve finite iteration as the default execution model. |
 | Execution / Nonlocal/global writes | `STARLARK` | `DEFAULT` | `YES` | Provide no `global` or `nonlocal` declarations; assignment binds in the current function while enclosing mutable values may still be changed. | Keep lexical assignment rules simple and make outer-scope mutation explicit through shared values. |
-| Execution / Module loading | `OPEN` | - | - | - | - |
+| Execution / Module loading | `STARLARK` | `HOST` | `YES` | Keep top-level `load` statements with literal module and export names, explicit imports of non-underscore-prefixed values into file-local bindings, and host-defined module resolution through `Thread.Load`; provide no Python `import` statements or dynamic import built-in. | Preserve statically visible dependencies and let embedding applications define a hermetic module graph without exposing Python's process-wide import system. |
 | Values / Booleans and numbers | `STARLARK` | `DEFAULT` | `YES` | Keep `bool` distinct from numeric types; require explicit `int` or `float` conversion before numeric use. | Preserve Starlark's type clarity rather than adopting Python's historical `bool`-as-`int` relationship. |
 | Values / Text model | `OPEN` | - | - | - | - |
 | Values / String iteration | `STARLARK` | `DEFAULT` | `YES` | Keep strings non-iterable in loops, comprehensions, starred calls, and iterable-consuming built-ins and methods; require `.elems()`, `.elem_ords()`, `.codepoints()`, or `.codepoint_ords()` to select an explicit iterable view. Substring membership remains supported separately. | Reject accidental use of a scalar string where a collection was intended and require programs to choose explicitly between encoded elements and Unicode code points. |
@@ -158,6 +158,12 @@ before resolving any of them.
 | Expressions / Runtime introspection objects | `OPEN` | - | - | - | - |
 | Expressions / Immutable collection counterparts | `OPEN` | - | - | - | - |
 | Builtins / `sum` | `STARLARKX` | `DEFAULT` | `YES` | Provide `sum(iterable, /, start=0)`, accepting `start` positionally or by name, rejecting string and bytes starts, returning `start` unchanged for an empty iterable, and otherwise applying ordinary StarlarkX `+` from left to right. | Provide Python's familiar accumulation interface while preserving StarlarkX boolean, arithmetic, sequence, iteration, and host-defined value semantics. |
+| Builtins / `ascii` | `STARLARKX` | `DEFAULT` | `YES` | Provide `ascii(object, /)` by escaping every non-ASCII code point in the ordinary StarlarkX representation with `\x`, `\u`, or `\U` escapes and lowercase hexadecimal digits, using the same conversion as formatting's `!a`. | Provide Python's ASCII-safe representation helper while preserving StarlarkX representations and host-defined value strings. |
+| Builtins / Integer base formatting | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `bin(integer)`, `oct(integer)`, and `hex(integer)` for StarlarkX integers, with lowercase digits, Python's prefixes, and a negative sign before the prefix; reject booleans and values requiring Python's `__index__` protocol. | Add familiar integer formatting helpers while preserving the distinct Boolean type and omitting Python object protocols. |
+| Builtins / `callable` | `STARLARKX` | `DEFAULT` | `YES` | Provide `callable(object, /)` and return true exactly when the value implements StarlarkX's `Callable` interface. | Expose the runtime's existing callability rule without introducing Python classes or `__call__` lookup. |
+| Builtins / `divmod` | `STARLARKX` | `DEFAULT` | `YES` | Provide `divmod(x, y, /)` by evaluating ordinary StarlarkX `x // y` followed by `x % y` and returning both results as a tuple. | Add Python's convenience operation while preserving StarlarkX arithmetic, Boolean separation, errors, and host-defined binary operations. |
+| Builtins / `pow` | `STARLARKX` | `DEFAULT` | `YES` | Provide `pow(base, exp, mod=None)` with positional or named parameters; support non-negative integer powers with exact results up to 1,048,576 bits, Python's real-float NaN, infinity, signed-zero, zero-to-negative error, and overflow behavior, and integer modular powers including negative exponents and moduli; reject booleans, non-numeric values, zero moduli, non-invertible negative modular exponents, and negative bases with fractional exponents because complex values are absent. | Provide Python's native numeric and modular algorithms while preserving StarlarkX's bounded-operation goals, number model, and omission of complex and special-method protocols. |
+| Builtins / `round` | `STARLARKX` | `DEFAULT` | `YES` | Provide `round(number, ndigits=None)` with positional or named parameters for integers and floats, decimal round-half-even behavior, integer results when `ndigits` is omitted or `None`, same-type results when it is an integer, signed float zero, and Python's NaN, infinity, and extreme-digit behavior; reject booleans and special-method delegation. | Provide Python's predictable decimal rounding for native numbers while preserving StarlarkX's Boolean separation and closed numeric model. |
 | Builtins / Other missing Python built-ins | `OPEN` | - | - | - | - |
 | Methods / List method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`; make `copy` shallow, make in-place mutators return `None`, and make `sort` stable with keyword-only `key=None` and `reverse=False`, one key call per item, ordinary StarlarkX `<`, strict Boolean `reverse`, and replacement only after successful key evaluation and comparison. Mutators reject frozen lists and lists with active iterators. | Provide Python's familiar complete list method surface while preserving StarlarkX equality, ordering, call typing, freezing, and mutation-safety rules. |
 | Methods / Dictionary `copy` | `STARLARKX` | `DEFAULT` | `YES` | Return a new mutable shallow dictionary copy with the source's insertion order and shared keys and values, whether the source dictionary is mutable or frozen. | Provide Python's familiar shallow-copy operation while preserving StarlarkX's frozen published values and enabling a mutable locally owned outer dictionary. |
@@ -346,22 +352,21 @@ contains:
 
 ```text
 None True False
-abs all any bool bytes chr dict dir enumerate fail float format getattr hasattr
-hash int len list max min ord print range repr reversed set sorted str sum tuple
-type zip
+abs all any ascii bin bool bytes callable chr dict dir divmod enumerate fail
+float format getattr hasattr hash hex int len list max min oct ord pow print range
+repr reversed round set sorted str sum tuple type zip
 ```
 
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
 predeclared names before evaluation.
 
 Python built-ins related to the object model, dynamic execution, I/O, iteration,
-exceptions, and reflection are absent. The missing Python 3.14 built-ins include
-`__import__`, `aiter`, `anext`, `ascii`, `bin`, `breakpoint`, `bytearray`,
-`callable`, `classmethod`, `compile`, `complex`, `delattr`, `divmod`, `eval`,
-`exec`, `filter`, `frozenset`, `globals`, `help`, `hex`, `id`, `input`,
-`isinstance`, `issubclass`, `iter`, `locals`, `map`, `memoryview`, `next`,
-`object`, `oct`, `open`, `pow`, `property`, `round`, `setattr`, `slice`,
-`staticmethod`, `super`, and `vars`.
+exceptions, and reflection are absent. The remaining missing Python 3.14
+built-ins include `__import__`, `aiter`, `anext`, `breakpoint`, `bytearray`,
+`classmethod`, `compile`, `complex`, `delattr`, `eval`, `exec`, `filter`,
+`frozenset`, `globals`, `help`, `id`, `input`, `isinstance`, `issubclass`, `iter`,
+`locals`, `map`, `memoryview`, `next`, `object`, `open`, `property`, `setattr`,
+`slice`, `staticmethod`, `super`, and `vars`.
 
 Built-in type methods are also a subset rather than a compatibility layer:
 

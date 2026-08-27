@@ -41,13 +41,17 @@ func init() {
 		"True":      True,
 		"False":     False,
 		"abs":       NewBuiltin("abs", abs),
-		"any":       NewBuiltin("any", any_),
 		"all":       NewBuiltin("all", all),
+		"any":       NewBuiltin("any", any_),
+		"ascii":     NewBuiltin("ascii", ascii),
+		"bin":       NewBuiltin("bin", intBase),
 		"bool":      NewBuiltin("bool", bool_),
 		"bytes":     NewBuiltin("bytes", bytes_),
+		"callable":  NewBuiltin("callable", callable),
 		"chr":       NewBuiltin("chr", chr),
 		"dict":      NewBuiltin("dict", dict),
 		"dir":       NewBuiltin("dir", dir),
+		"divmod":    NewBuiltin("divmod", divmod),
 		"enumerate": NewBuiltin("enumerate", enumerate),
 		"fail":      NewBuiltin("fail", fail),
 		"float":     NewBuiltin("float", float),
@@ -55,16 +59,20 @@ func init() {
 		"getattr":   NewBuiltin("getattr", getattr),
 		"hasattr":   NewBuiltin("hasattr", hasattr),
 		"hash":      NewBuiltin("hash", hash),
+		"hex":       NewBuiltin("hex", intBase),
 		"int":       NewBuiltin("int", int_),
 		"len":       NewBuiltin("len", len_),
 		"list":      NewBuiltin("list", list),
 		"max":       NewBuiltin("max", minmax),
 		"min":       NewBuiltin("min", minmax),
+		"oct":       NewBuiltin("oct", intBase),
 		"ord":       NewBuiltin("ord", ord),
+		"pow":       NewBuiltin("pow", pow),
 		"print":     NewBuiltin("print", print),
 		"range":     NewBuiltin("range", range_),
 		"repr":      NewBuiltin("repr", repr),
 		"reversed":  NewBuiltin("reversed", reversed),
+		"round":     NewBuiltin("round", round),
 		"set":       NewBuiltin("set", set),
 		"sorted":    NewBuiltin("sorted", sorted),
 		"str":       NewBuiltin("str", str),
@@ -218,6 +226,37 @@ func abs(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	}
 }
 
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#ascii
+func ascii(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var x Value
+	if err := unpackPositionalArgsNoEscape("ascii", args, kwargs, 1, &x); err != nil {
+		return nil, err
+	}
+	return String(asciiRepresentation(x.String())), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#bin
+func intBase(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var x Int
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &x); err != nil {
+		return nil, err
+	}
+
+	base, prefix := 2, "0b"
+	switch b.Name() {
+	case "hex":
+		base, prefix = 16, "0x"
+	case "oct":
+		base, prefix = 8, "0o"
+	}
+
+	digits := x.bigInt().Text(base)
+	if strings.HasPrefix(digits, "-") {
+		return String("-" + prefix + digits[1:]), nil
+	}
+	return String(prefix + digits), nil
+}
+
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#all
 func all(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var iterable Iterable
@@ -300,6 +339,16 @@ func bytes_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	}
 }
 
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#callable
+func callable(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var x Value
+	if err := unpackPositionalArgsNoEscape("callable", args, kwargs, 1, &x); err != nil {
+		return nil, err
+	}
+	_, ok := x.(Callable)
+	return Bool(ok), nil
+}
+
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#chr
 func chr(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(kwargs) > 0 {
@@ -352,6 +401,23 @@ func dir(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 		elems[i] = String(name)
 	}
 	return NewList(elems), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#divmod
+func divmod(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var x, y Value
+	if err := unpackPositionalArgsNoEscape("divmod", args, kwargs, 2, &x, &y); err != nil {
+		return nil, err
+	}
+	quotient, err := Binary(syntax.SLASHSLASH, x, y)
+	if err != nil {
+		return nil, err
+	}
+	remainder, err := Binary(syntax.PERCENT, x, y)
+	if err != nil {
+		return nil, err
+	}
+	return Tuple{quotient, remainder}, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#enumerate
@@ -827,6 +893,193 @@ func ord(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	}
 }
 
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#pow
+func pow(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var base, exp Value
+	var mod Value = None
+	if err := UnpackArgs(b.Name(), args, kwargs, "base", &base, "exp", &exp, "mod?", &mod); err != nil {
+		return nil, err
+	}
+
+	if _, ok := mod.(NoneType); !ok {
+		baseInt, baseOK := base.(Int)
+		expInt, expOK := exp.(Int)
+		modInt, modOK := mod.(Int)
+		if !baseOK || !expOK || !modOK {
+			return nil, nameErr(b, "third argument requires all arguments to be int")
+		}
+		return modularPower(b, baseInt, expInt, modInt)
+	}
+
+	if baseInt, ok := base.(Int); ok {
+		if expInt, ok := exp.(Int); ok && expInt.Sign() >= 0 {
+			return exactIntegerPower(b, baseInt, expInt)
+		}
+	}
+
+	baseFloat, err := powerFloatOperand(base)
+	if err != nil {
+		return nil, fmt.Errorf("%s: for parameter base: %v", b.Name(), err)
+	}
+	expFloat, err := powerFloatOperand(exp)
+	if err != nil {
+		return nil, fmt.Errorf("%s: for parameter exp: %v", b.Name(), err)
+	}
+	result, err := floatPower(baseFloat, expFloat)
+	if err != nil {
+		return nil, nameErr(b, err)
+	}
+	return Float(result), nil
+}
+
+const maxPowResultBits = 1 << 20
+
+func exactIntegerPower(b *Builtin, base, exp Int) (Value, error) {
+	absoluteBase := base.BigInt()
+	absoluteBase.Abs(absoluteBase)
+	switch absoluteBase.Cmp(oneBig) {
+	case -1: // base is zero
+		if exp.Sign() == 0 {
+			return one, nil
+		}
+		return zero, nil
+	case 0: // base is 1 or -1
+		if base.Sign() < 0 && exp.bigInt().Bit(0) == 1 {
+			return MakeInt(-1), nil
+		}
+		return one, nil
+	}
+
+	exponent := exp.BigInt()
+	result := big.NewInt(1)
+	factor := base.BigInt()
+	for exponent.Sign() > 0 {
+		if exponent.Bit(0) == 1 {
+			result.Mul(result, factor)
+			if result.BitLen() > maxPowResultBits {
+				return nil, nameErr(b, "exact integer result exceeds 1048576-bit limit")
+			}
+		}
+		exponent.Rsh(exponent, 1)
+		if exponent.Sign() > 0 {
+			factor.Mul(factor, factor)
+			if factor.BitLen() > maxPowResultBits {
+				return nil, nameErr(b, "exact integer result exceeds 1048576-bit limit")
+			}
+		}
+	}
+	return MakeBigInt(result), nil
+}
+
+func modularPower(b *Builtin, base, exp, mod Int) (Value, error) {
+	modulus := mod.BigInt()
+	if modulus.Sign() == 0 {
+		return nil, nameErr(b, "third argument cannot be zero")
+	}
+	negativeModulus := modulus.Sign() < 0
+	modulus.Abs(modulus)
+	if modulus.Cmp(oneBig) == 0 {
+		return zero, nil
+	}
+
+	baseModulo := new(big.Int).Mod(base.bigInt(), modulus)
+	result := new(big.Int)
+	if result.Exp(baseModulo, exp.bigInt(), modulus) == nil {
+		return nil, nameErr(b, "base is not invertible for the given modulus")
+	}
+	if negativeModulus && result.Sign() != 0 {
+		result.Sub(result, modulus)
+	}
+	return MakeBigInt(result), nil
+}
+
+func powerFloatOperand(x Value) (float64, error) {
+	switch x := x.(type) {
+	case Float:
+		return float64(x), nil
+	case Int:
+		f, err := x.finiteFloat()
+		return float64(f), err
+	default:
+		return 0, fmt.Errorf("got %s, want int or float", x.Type())
+	}
+}
+
+func floatPower(base, exp float64) (float64, error) {
+	if exp == 0 {
+		return 1, nil
+	}
+	if math.IsNaN(base) {
+		return base, nil
+	}
+	if math.IsNaN(exp) {
+		if base == 1 {
+			return 1, nil
+		}
+		return exp, nil
+	}
+	if math.IsInf(exp, 0) {
+		magnitude := math.Abs(base)
+		if magnitude == 1 {
+			return 1, nil
+		}
+		if (exp > 0) == (magnitude > 1) {
+			return math.Inf(1), nil
+		}
+		return 0, nil
+	}
+	if math.IsInf(base, 0) {
+		odd := floatIsOddInteger(exp)
+		if exp > 0 {
+			if odd {
+				return base, nil
+			}
+			return math.Inf(1), nil
+		}
+		if odd {
+			return math.Copysign(0, base), nil
+		}
+		return 0, nil
+	}
+	if base == 0 {
+		if exp < 0 {
+			return 0, errors.New("zero cannot be raised to a negative power")
+		}
+		if floatIsOddInteger(exp) {
+			return base, nil
+		}
+		return 0, nil
+	}
+
+	negate := false
+	if base < 0 {
+		if exp != math.Floor(exp) {
+			return 0, errors.New("negative number cannot be raised to a fractional power without complex numbers")
+		}
+		base = -base
+		negate = floatIsOddInteger(exp)
+	}
+	if base == 1 {
+		if negate {
+			return -1, nil
+		}
+		return 1, nil
+	}
+
+	result := math.Pow(base, exp)
+	if math.IsInf(result, 0) {
+		return 0, errors.New("result too large to represent as float")
+	}
+	if negate {
+		result = -result
+	}
+	return result, nil
+}
+
+func floatIsOddInteger(x float64) bool {
+	return math.Mod(math.Abs(x), 2) == 1
+}
+
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#print
 func print(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	sep, end := " ", "\n"
@@ -994,6 +1247,128 @@ func (it *rangeIterator) Next(p *Value) bool {
 	return false
 }
 func (*rangeIterator) Done() {}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#round
+func round(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var number Value
+	var ndigits Value = None
+	if err := UnpackArgs(b.Name(), args, kwargs, "number", &number, "ndigits?", &ndigits); err != nil {
+		return nil, err
+	}
+
+	var digits Int
+	hasDigits := false
+	if _, ok := ndigits.(NoneType); !ok {
+		var valid bool
+		digits, valid = ndigits.(Int)
+		if !valid {
+			return nil, fmt.Errorf("%s: for parameter ndigits: got %s, want int or NoneType", b.Name(), ndigits.Type())
+		}
+		hasDigits = true
+	}
+
+	switch number := number.(type) {
+	case Int:
+		if !hasDigits || digits.Sign() >= 0 {
+			return number, nil
+		}
+		return roundInt(number, digits), nil
+	case Float:
+		if !hasDigits {
+			return roundFloatToInt(number, b)
+		}
+		return roundFloat(number, digits, b)
+	default:
+		return nil, fmt.Errorf("%s: for parameter number: got %s, want int or float", b.Name(), number.Type())
+	}
+}
+
+func roundInt(x, ndigits Int) Int {
+	places := new(big.Int).Neg(ndigits.bigInt())
+	magnitude := x.BigInt()
+	magnitude.Abs(magnitude)
+	decimalDigits := len(magnitude.Text(10))
+	if places.Cmp(big.NewInt(int64(decimalDigits))) > 0 {
+		return zero
+	}
+
+	scale := new(big.Int).Exp(big.NewInt(10), places, nil)
+	quotient := nearestEvenQuotient(x.bigInt(), scale)
+	return MakeBigInt(quotient.Mul(quotient, scale))
+}
+
+func roundFloatToInt(x Float, b *Builtin) (Value, error) {
+	value := float64(x)
+	if math.IsInf(value, 0) {
+		return nil, nameErr(b, "cannot convert float infinity to int")
+	}
+	if math.IsNaN(value) {
+		return nil, nameErr(b, "cannot convert float NaN to int")
+	}
+	rational := new(big.Rat).SetFloat64(value)
+	return MakeBigInt(nearestEvenQuotient(rational.Num(), rational.Denom())), nil
+}
+
+func roundFloat(x Float, ndigits Int, b *Builtin) (Value, error) {
+	value := float64(x)
+	if !isFinite(value) {
+		return x, nil
+	}
+
+	// These are the decimal limits beyond which a binary64 value cannot change.
+	if ndigits.bigInt().Cmp(big.NewInt(323)) > 0 {
+		return x, nil
+	}
+	if ndigits.bigInt().Cmp(big.NewInt(-308)) < 0 {
+		return Float(math.Copysign(0, value)), nil
+	}
+
+	n, _ := ndigits.Int64()
+	places := n
+	if places < 0 {
+		places = -places
+	}
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(places), nil)
+	rational := new(big.Rat).SetFloat64(value)
+	var rounded *big.Rat
+	if n >= 0 {
+		numerator := new(big.Int).Mul(rational.Num(), scale)
+		quotient := nearestEvenQuotient(numerator, rational.Denom())
+		rounded = new(big.Rat).SetFrac(quotient, scale)
+	} else {
+		denominator := new(big.Int).Mul(rational.Denom(), scale)
+		quotient := nearestEvenQuotient(rational.Num(), denominator)
+		integer := new(big.Int).Mul(quotient, scale)
+		rounded = new(big.Rat).SetInt(integer)
+	}
+
+	result, _ := rounded.Float64()
+	if math.IsInf(result, 0) {
+		return nil, nameErr(b, "rounded value too large to represent")
+	}
+	if result == 0 {
+		result = math.Copysign(0, value)
+	}
+	return Float(result), nil
+}
+
+// nearestEvenQuotient rounds num/den to an integer, resolving ties to even.
+// den must be positive.
+func nearestEvenQuotient(num, den *big.Int) *big.Int {
+	negative := num.Sign() < 0
+	magnitude := new(big.Int).Abs(new(big.Int).Set(num))
+	quotient, remainder := new(big.Int), new(big.Int)
+	quotient.QuoRem(magnitude, den, remainder)
+	twiceRemainder := new(big.Int).Lsh(remainder, 1)
+	comparison := twiceRemainder.Cmp(den)
+	if comparison > 0 || comparison == 0 && quotient.Bit(0) == 1 {
+		quotient.Add(quotient, oneBig)
+	}
+	if negative {
+		quotient.Neg(quotient)
+	}
+	return quotient
+}
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#repr
 func repr(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {

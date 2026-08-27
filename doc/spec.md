@@ -3074,6 +3074,33 @@ application-specific dialect) without breaking existing programs.
 `abs(x)` returns the absolute value of its argument `x`, which must be an int or float.
 The result has the same type as `x`.
 
+### ascii
+
+`ascii(object)` accepts exactly one positional argument and returns its StarlarkX
+representation with each non-ASCII code point escaped. Code points through U+00FF
+use `\x` escapes, code points through U+FFFF use `\u` escapes, and larger code
+points use `\U` escapes. Hexadecimal digits are lowercase. This is the same
+conversion used by `!a` in percent and brace formatting.
+
+```python
+ascii("plain")                    # '"plain"'
+ascii("é")                        # '"\xe9"'
+ascii(["€"])                      # '["\u20ac"]'
+```
+
+### bin
+
+`bin(integer)` accepts exactly one positional `int` and returns its base-two
+representation with a `0b` prefix. A negative sign precedes the prefix.
+`bool` and other values are rejected.
+
+```python
+bin(10)                           # "0b1010"
+bin(-10)                          # "-0b1010"
+```
+
+See also: `hex` and `oct`.
+
 ### any
 
 `any(x)` returns `True` if any element of the iterable sequence x has a truth value of true.
@@ -3108,6 +3135,13 @@ bytes("A\u0400")                 # b"A\u0400"
 bytes([65, 66, 67])              # b"ABC"
 bytes(b"ABC")                    # b"ABC"
 ```
+
+### callable
+
+`callable(object)` accepts exactly one positional argument and returns `True` if
+its argument is a StarlarkX callable value, such as a function, lambda, built-in
+function, bound built-in method, or host value that implements the Go
+`Callable` interface. It returns `False` for every other value.
 
 ### chr
 
@@ -3168,6 +3202,19 @@ However, an application may define types with fields that may be read or set by 
 ```text
 y = x.f
 x.f = y
+```
+
+### divmod
+
+`divmod(x, y)` accepts exactly two positional arguments and returns
+`(x // y, x % y)`. It applies ordinary StarlarkX floor division first and then
+ordinary StarlarkX remainder, including their numeric mixing, errors, and
+host-defined binary-operation behavior.
+
+```python
+divmod(7, 3)                     # (2, 1)
+divmod(-7, 3)                    # (-3, 2)
+divmod(7.5, -2.0)                # (-4.0, -0.5)
 ```
 
 ### enumerate
@@ -3256,6 +3303,19 @@ For bytes, `hash` is the 32-bit FNV-1a hash of the raw byte sequence.
 
 `hash` fails for every other operand, even if the value is internally hashable
 and is therefore suitable as a dictionary key or set element.
+
+### hex
+
+`hex(integer)` accepts exactly one positional `int` and returns its base-sixteen
+representation using lowercase digits and a `0x` prefix. A negative sign
+precedes the prefix. `bool` and other values are rejected.
+
+```python
+hex(12648430)                    # "0xc0ffee"
+hex(-255)                        # "-0xff"
+```
+
+See also: `bin` and `oct`.
 
 ### int
 
@@ -3349,6 +3409,19 @@ min([], default=0)                               # 0
 ```
 
 
+### oct
+
+`oct(integer)` accepts exactly one positional `int` and returns its base-eight
+representation with a `0o` prefix. A negative sign precedes the prefix. `bool`
+and other values are rejected.
+
+```python
+oct(342391)                      # "0o1234567"
+oct(-10)                         # "-0o12"
+```
+
+See also: `bin` and `hex`.
+
 ### ord
 
 `ord(s)` accepts a string or bytes value. For a string, it returns the integer
@@ -3372,6 +3445,35 @@ ord(b"A")                       # 65
 See also: `chr`.
 
 <b>Implementation note:</b> `ord` is not provided by the Java implementation.
+
+### pow
+
+`pow(base, exp, mod=None)` accepts its parameters positionally or by name.
+Without a modulus, `base` and `exp` must each be an `int` or `float`. Two
+integer operands with a non-negative exponent produce an exact integer;
+otherwise integer operands are converted to finite floats and the result is a
+float. Exact integer results are limited to 1,048,576 bits so one built-in call
+cannot allocate an unbounded integer. Existing float NaN, infinity, and
+signed-zero values follow Python's real power rules. Oversized integer conversion
+or finite result overflow is an error. Zero cannot be raised to a negative
+power. A negative base with a non-integral exponent is an error because
+StarlarkX has no complex numbers.
+
+When `mod` is not `None`, all three operands must be integers and the modulus
+must be nonzero. The result is computed using modular exponentiation without
+materializing the unbounded intermediate power. A negative exponent computes a
+modular inverse and fails when the base is not invertible for the modulus. The
+result is zero or has the same sign as the modulus.
+
+`bool` is not accepted as a numeric operand in either form.
+
+```python
+pow(2, 10)                       # 1024
+pow(2, -3)                       # 0.125
+pow(5, 2, 14)                    # 11
+pow(3, -1, 11)                   # 4
+pow(2, 3, -5)                    # -2
+```
 
 ### print
 
@@ -3463,6 +3565,28 @@ repr([1, "x"])          # '[1, "x"]'
 reversed(range(5))                              # [4, 3, 2, 1, 0]
 reversed("stressed".codepoints())               # ["d", "e", "s", "s", "e", "r", "t", "s"]
 reversed({"one": 1, "two": 2}.keys())           # ["two", "one"]
+```
+
+### round
+
+`round(number, ndigits=None)` accepts its parameters positionally or by name.
+`number` must be an `int` or `float`; `bool` is rejected. An omitted or explicit
+`None` value for `ndigits` rounds a float to the nearest integer and returns an
+`int`. An integer is returned unchanged. Halfway cases round to the nearest even
+integer. Converting a NaN or infinity to an integer is an error.
+
+When `ndigits` is an integer, the result has the same type as `number`. Positive
+values select decimal positions after the point and negative values select
+positions before it. Halfway cases round to the nearest even choice. A
+non-negative `ndigits` leaves an integer unchanged. For floats, NaN and infinity
+are returned unchanged, and a zero result preserves the input sign.
+
+```python
+round(5.5)                       # 6
+round(6.5)                       # 6
+round(2.675, 2)                  # 2.67
+round(25.0, -1)                  # 20.0
+round(350, -2)                   # 400
 ```
 
 ### set
