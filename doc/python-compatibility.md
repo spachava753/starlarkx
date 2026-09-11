@@ -134,7 +134,7 @@ before resolving any of them.
 | Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Support eager `{element for target in iterable if condition ...}` with nested loops and filters, comprehension-local bindings, and direct set construction when `FileOptions.Set` is enabled. Use StarlarkX iterability, equality, hashing, insertion order, and mutation safety; preserve set-literal and generator omissions. | Add Python's concise set-building syntax without allocating an intermediate list or changing the existing value model. |
 | Syntax / Generator expressions | `OPEN` | - | - | - | - |
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
-| Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `NO` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
+| Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
 | Syntax / Function parameters | `OPEN` | - | - | - | - |
 | Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Accept the Python 3.14 numeric literal forms covered by this area, including valid digit-separator placement and imaginary literals. | Improve Python source compatibility and preserve familiar readable forms for large numeric constants. |
 | Syntax / String escapes | `OPEN` | - | - | - | - |
@@ -305,7 +305,7 @@ construct but intentionally or currently accepts less syntax.
 | Set comprehensions | With `Set` enabled, `{x for x in iterable}` builds a set eagerly using StarlarkX scope, iteration, equality, hashing, insertion order, and mutation rules. No intermediate list or call to the `set` name is made. Python provides the same eager syntax but uses its own set and value semantics. |
 | Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
-| Loop clauses | `for` and `while` have no `else` clause. |
+| Loop clauses | `for` and `while` support Python-style `else`: it runs on normal completion, not on `break`, return, or error. Existing dialect restrictions on loops remain. |
 | Function parameters | No positional-only `/` marker, annotations, return annotations, type parameters, or decorators. |
 | Numeric literals | Numeric digit separators such as `1_000` are rejected. Complex and imaginary literals are absent. |
 | String escapes | Unknown escapes are errors rather than retained literally. String `\x` and octal escapes are restricted to ASCII; bytes escapes above 255 are errors. Python's string and bytes escape ranges differ. Named Unicode escapes (`\N{...}`) are absent. |
@@ -460,7 +460,7 @@ A practical extension plan can group work by architectural depth:
    evaluation order. These changes are localized conceptually but can
    break Starlark code.
 2. **Extend parser and evaluator**: literal concatenation, numeric separators,
-   richer unpacking, augmented slice assignment, loop `else`, and f-strings.
+   richer unpacking, augmented slice assignment, and f-strings.
 3. **Add new runtime subsystems**: exceptions, generators/iterators and generator
    expressions, classes and Python's object protocol, imports/module objects,
    context managers, async execution and comprehensions, and broad

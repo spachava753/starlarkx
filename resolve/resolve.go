@@ -548,6 +548,10 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 		r.loops++
 		r.stmts(stmt.Body)
 		r.loops--
+		// The else suite is outside this loop but still nested syntax for load.
+		r.ifstmts++
+		r.stmts(stmt.Else)
+		r.ifstmts--
 
 	case *syntax.WhileStmt:
 		if !r.options.While {
@@ -560,6 +564,9 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 		r.loops++
 		r.stmts(stmt.Body)
 		r.loops--
+		r.ifstmts++
+		r.stmts(stmt.Else)
+		r.ifstmts--
 
 	case *syntax.ReturnStmt:
 		if r.container().function == nil {

@@ -259,12 +259,13 @@ func (p *parser) parseForStmt() Stmt {
 	x := p.parseExpr(false)
 	p.consume(COLON)
 	body := p.parseSuite()
-	return &ForStmt{
-		For:  forpos,
-		Vars: vars,
-		X:    x,
-		Body: body,
+	stmt := &ForStmt{For: forpos, Vars: vars, X: x, Body: body}
+	if p.tok == ELSE {
+		stmt.ElsePos = p.nextToken()
+		p.consume(COLON)
+		stmt.Else = p.parseSuite()
 	}
+	return stmt
 }
 
 func (p *parser) parseWhileStmt() Stmt {
@@ -272,11 +273,13 @@ func (p *parser) parseWhileStmt() Stmt {
 	cond := p.parseTest()
 	p.consume(COLON)
 	body := p.parseSuite()
-	return &WhileStmt{
-		While: whilepos,
-		Cond:  cond,
-		Body:  body,
+	stmt := &WhileStmt{While: whilepos, Cond: cond, Body: body}
+	if p.tok == ELSE {
+		stmt.ElsePos = p.nextToken()
+		p.consume(COLON)
+		stmt.Else = p.parseSuite()
 	}
+	return stmt
 }
 
 // Equivalent to 'exprlist' production in Python grammar.

@@ -327,27 +327,39 @@ func (x *Comprehension) Span() (start, end Position) {
 // A ForStmt represents a loop: for Vars in X: Body.
 type ForStmt struct {
 	commentsRef
-	For  Position
-	Vars Expr // name, or tuple of names
-	X    Expr
-	Body []Stmt
+	For     Position
+	Vars    Expr // name, or tuple of names
+	X       Expr
+	Body    []Stmt
+	ElsePos Position
+	Else    []Stmt
 }
 
 func (x *ForStmt) Span() (start, end Position) {
-	_, end = x.Body[len(x.Body)-1].Span()
+	body := x.Body
+	if len(x.Else) > 0 {
+		body = x.Else
+	}
+	_, end = body[len(body)-1].Span()
 	return x.For, end
 }
 
 // A WhileStmt represents a while loop: while X: Body.
 type WhileStmt struct {
 	commentsRef
-	While Position
-	Cond  Expr
-	Body  []Stmt
+	While   Position
+	Cond    Expr
+	Body    []Stmt
+	ElsePos Position
+	Else    []Stmt
 }
 
 func (x *WhileStmt) Span() (start, end Position) {
-	_, end = x.Body[len(x.Body)-1].Span()
+	body := x.Body
+	if len(x.Else) > 0 {
+		body = x.Else
+	}
+	_, end = body[len(body)-1].Span()
 	return x.While, end
 }
 

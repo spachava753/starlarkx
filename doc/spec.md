@@ -2937,7 +2937,7 @@ value of the condition is `True`, it executes a list of statement and repeats
 the process until the truth value of the condition becomes `False`.
 
 ```grammar {.good}
-WhileStmt = 'while' Test ':' Suite .
+WhileStmt = 'while' Test ':' Suite ['else' ':' Suite] .
 ```
 
 Example:
@@ -2967,7 +2967,7 @@ the successive element values to one or more variables and executes a
 list of statements, the _loop body_.
 
 ```grammar {.good}
-ForStmt = 'for' LoopVariables 'in' Expression ':' Suite .
+ForStmt = 'for' LoopVariables 'in' Expression ':' Suite ['else' ':' Suite] .
 ```
 
 Example:
@@ -3002,6 +3002,30 @@ The Go implementation permits top-level `for` loops when
 `FileOptions.TopLevelControl` is true. The legacy command's
 `-globalreassign` flag enables this option.
 
+
+### Loop else clauses
+
+A `for` or `while` loop may have an `else` suite at the same indentation as the
+loop. It runs when a `for` exhausts its iterable or a `while` condition becomes
+false, including when the body never runs. A `break` that exits that loop skips
+its `else`. A `continue` does not prevent eventual execution of `else`.
+Returning from the function or aborting evaluation with an error does not run it.
+
+```python
+for item in items:
+    if matches(item):
+        break
+else:
+    fail("no matching item")
+```
+
+A `for` loop releases its iterator before running `else`, so the source may be
+mutated there unless another active iterator or freezing prevents it. The else
+suite has no separate lexical scope. A `break` or `continue` in that suite must
+refer to an enclosing loop, not the loop whose else suite is executing; without
+an enclosing loop it is a static error. All existing `While` and
+`TopLevelControl` option checks still apply, and `load` remains forbidden inside
+any loop or else suite.
 
 ### Break and Continue
 

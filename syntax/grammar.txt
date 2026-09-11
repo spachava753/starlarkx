@@ -14,9 +14,9 @@ Parameter = identifier | identifier '=' Test | '*' | '*' identifier | '**' ident
 
 IfStmt = 'if' Test ':' Suite {'elif' Test ':' Suite} ['else' ':' Suite] .
 
-ForStmt = 'for' LoopVariables 'in' Expression ':' Suite .
+ForStmt = 'for' LoopVariables 'in' Expression ':' Suite ['else' ':' Suite] .
 
-WhileStmt = 'while' Test ':' Suite .
+WhileStmt = 'while' Test ':' Suite ['else' ':' Suite] .
 
 Suite = [newline indent {Statement} outdent] | SimpleStmt .
 

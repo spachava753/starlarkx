@@ -1180,10 +1180,11 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 		fcomp.set(stmt.Name)
 
 	case *syntax.ForStmt:
-		// Keep consistent with ForClause.
 		head := fcomp.newBlock()
 		body := fcomp.newBlock()
-		tail := fcomp.newBlock()
+		exhausted := fcomp.newBlock()
+		broken := fcomp.newBlock()
+		done := fcomp.newBlock()
 
 		fcomp.expr(stmt.X)
 		fcomp.setPos(stmt.For)
@@ -1191,26 +1192,35 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 		fcomp.jump(head)
 
 		fcomp.block = head
-		fcomp.condjump(ITERJMP, tail, body)
+		fcomp.condjump(ITERJMP, exhausted, body)
 
 		fcomp.block = body
 		fcomp.assign(stmt.For, stmt.Vars)
-		fcomp.loops = append(fcomp.loops, loop{break_: tail, continue_: head})
+		fcomp.loops = append(fcomp.loops, loop{break_: broken, continue_: head})
 		fcomp.stmts(stmt.Body)
 		fcomp.loops = fcomp.loops[:len(fcomp.loops)-1]
 		fcomp.jump(head)
 
-		fcomp.block = tail
+		fcomp.block = broken
 		fcomp.emit(ITERPOP)
+		fcomp.jump(done)
+
+		fcomp.block = exhausted
+		// Release the iterator before else, including any break/continue of an outer loop.
+		fcomp.emit(ITERPOP)
+		fcomp.stmts(stmt.Else)
+		fcomp.jump(done)
+		fcomp.block = done
 
 	case *syntax.WhileStmt:
 		head := fcomp.newBlock()
 		body := fcomp.newBlock()
+		exhausted := fcomp.newBlock()
 		done := fcomp.newBlock()
 
 		fcomp.jump(head)
 		fcomp.block = head
-		fcomp.ifelse(stmt.Cond, body, done)
+		fcomp.ifelse(stmt.Cond, body, exhausted)
 
 		fcomp.block = body
 		fcomp.loops = append(fcomp.loops, loop{break_: done, continue_: head})
@@ -1218,6 +1228,9 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 		fcomp.loops = fcomp.loops[:len(fcomp.loops)-1]
 		fcomp.jump(head)
 
+		fcomp.block = exhausted
+		fcomp.stmts(stmt.Else)
+		fcomp.jump(done)
 		fcomp.block = done
 
 	case *syntax.ReturnStmt:

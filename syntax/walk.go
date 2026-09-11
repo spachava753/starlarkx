@@ -48,10 +48,12 @@ func Walk(n Node, f func(Node) bool) {
 		Walk(n.Vars, f)
 		Walk(n.X, f)
 		walkStmts(n.Body, f)
+		walkStmts(n.Else, f)
 
 	case *WhileStmt:
 		Walk(n.Cond, f)
 		walkStmts(n.Body, f)
+		walkStmts(n.Else, f)
 
 	case *ReturnStmt:
 		if n.Result != nil {
