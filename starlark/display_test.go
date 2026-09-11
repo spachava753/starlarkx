@@ -34,7 +34,7 @@ func (it *displayIterator) Next(p *starlark.Value) bool {
 func (it *displayIterator) Done() { *it.events = append(*it.events, "done") }
 
 func TestDisplayIteratorCleanup(t *testing.T) {
-	for _, source := range []string{`[*source, later()]`, `(*source, later())`, `[*source, *0]`} {
+	for _, source := range []string{`[*source, later()]`, `(*source, later())`, `[*source, *0]`, `{*source, later()}`, `{*source, *0}`} {
 		var events []string
 		globals := starlark.StringDict{
 			"source": displayIterable{starlark.None, &events},
@@ -43,7 +43,7 @@ func TestDisplayIteratorCleanup(t *testing.T) {
 				return starlark.None, nil
 			}),
 		}
-		_, err := starlark.EvalOptions(new(syntax.FileOptions), new(starlark.Thread), "test.star", source, globals)
+		_, err := starlark.EvalOptions(&syntax.FileOptions{Set: true}, new(starlark.Thread), "test.star", source, globals)
 		want := "iterate,next,next,next,done,later"
 		if strings.Contains(source, "*0") {
 			want = "iterate,next,next,next,done"

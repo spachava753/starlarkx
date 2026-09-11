@@ -1005,7 +1005,7 @@ func (p *parser) parseDict() Expr {
 	if p.tok == STARSTAR {
 		x = p.parseDictEntry()
 	} else {
-		key := p.parseTest()
+		key := p.parseStarTest()
 		if p.tok == FOR {
 			return p.parseComprehensionSuffix(lbrace, key, RBRACE)
 		}
@@ -1039,7 +1039,7 @@ func (p *parser) parseSetDisplay(lbrace Position, first Expr) Expr {
 		if p.tok == RBRACE {
 			break
 		}
-		elements = append(elements, p.parseTest())
+		elements = append(elements, p.parseStarTest())
 	}
 	return &SetExpr{Lbrace: lbrace, List: elements, Rbrace: p.consume(RBRACE)}
 }

@@ -1845,23 +1845,32 @@ iterable views are not hashable.
 
 ### Set expressions
 
-A set display encloses one or more comma-separated expressions in braces.
-It creates a new mutable set. An optional comma may follow the final element.
+A set display encloses one or more comma-separated entries in braces.
+Ordinary entries add one element; starred entries expand an iterable.
+It creates a new mutable set. An optional comma may follow the final entry.
 Empty braces `{}` create a dictionary; use `set()` for an empty set.
 
 ```grammar {.good}
-SetExpr = '{' Test {',' Test} [','] '}' .
+SetExpr = '{' DisplayEntries [','] '}' .
 ```
 
 ```python
 {3, 1, 3, 2}        # set([3, 1, 2])
 {1,}                # set([1])
+{*[3, 1], 2, *[1]}  # set([3, 1, 2])
+{*[]}               # set([])
 ```
 
 Elements are evaluated and inserted from left to right. Every expression runs,
 even if it produces a duplicate. Elements use ordinary equality and hashing;
 duplicates keep their first insertion position. An unhashable element is an
 error and stops evaluation before later entries run.
+
+A starred entry follows the [display unpacking](#display-unpacking) rules.
+Its iterable is consumed and its iterator released before the next entry is
+evaluated. A non-iterable operand or unhashable yielded element is an error.
+Every started iterator is released, including on insertion errors. Strings
+require an explicit iterable view. The inputs are unchanged.
 
 Set displays require `FileOptions.Set`, with the same defaults as other
 [set features](#sets). Construction does not call the name `set`. Defining a
@@ -1892,7 +1901,7 @@ Examples:
 
 ### Display unpacking
 
-List and parenthesized tuple displays accept starred entries. Each `*value`
+List, set, and parenthesized tuple displays accept starred entries. Each `*value`
 expands a StarlarkX iterable into the new collection. Ordinary and starred
 entries may be mixed, with any number of stars.
 

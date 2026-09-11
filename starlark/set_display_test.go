@@ -10,6 +10,7 @@ import (
 
 func TestSetDisplayOptions(t *testing.T) {
 	for _, source := range []string{
+		"result = {*[1], 2}", "set = 0\nresult = {*[]}", "def f():\n set = 0\n return {*[1]}",
 		"result = {1, 2}", "set = 0\nresult = {1}", "def f():\n set = 0\n return {1}",
 	} {
 		_, _, err := starlark.SourceProgramOptions(new(syntax.FileOptions), "set.star", source, (starlark.StringDict{}).Has)
@@ -39,7 +40,7 @@ func TestSetDisplayOptions(t *testing.T) {
 			}
 		}
 	}
-	for _, source := range []string{"{1, 2: 3}", "{1: 2, 3}", "{1} = []", "{missing}"} {
+	for _, source := range []string{"{*[] for x in []}", "{*[]: 1}", "{1, **{}}", "{1, 2: 3}", "{1: 2, 3}", "{1} = []", "{missing}"} {
 		if _, _, err := starlark.SourceProgramOptions(&syntax.FileOptions{Set: true}, "set.star", source, (starlark.StringDict{}).Has); err == nil {
 			t.Errorf("accepted %s", source)
 		}

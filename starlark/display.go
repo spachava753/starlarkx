@@ -13,6 +13,15 @@ func setDictUnique(dict *Dict, key, value Value) error {
 	return nil
 }
 
+func extendSetDisplay(set *Set, value Value) error {
+	iter := Iterate(value)
+	if iter == nil {
+		return fmt.Errorf("got %s, want iterable in set display", value.Type())
+	}
+	defer iter.Done()
+	return set.InsertAll(iter)
+}
+
 func mergeDictDisplay(dict *Dict, value Value) error {
 	mapping, ok := value.(IterableMapping)
 	if !ok {

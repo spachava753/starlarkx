@@ -144,6 +144,13 @@ on that node, independently of bindings named `set`. The compiler creates the
 set directly and inserts each evaluated element before evaluating the next.
 Insertion uses the same ordered hash table as other set operations.
 
+Starred set entries reuse the parsing and operand validation used by list
+and tuple displays. They expand directly into the new set. The evaluator
+keeps the source iterator active while hashing and inserting elements and
+releases it on completion or insertion failure. Repeated values use ordinary
+set insertion, retaining their first position. The `Set` option applies to
+the whole display, including displays with only starred entries.
+
 ## Evaluator
 
 ### Data types

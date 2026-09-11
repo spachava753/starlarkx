@@ -407,6 +407,13 @@ loop:
 			iterstack[n].Done()
 			iterstack = iterstack[:n]
 
+		case compile.SETEXTEND:
+			err = extendSetDisplay(stack[sp-2].(*Set), stack[sp-1])
+			sp -= 2
+			if err != nil {
+				break loop
+			}
+
 		case compile.DICTMERGE:
 			err = mergeDictDisplay(stack[sp-2].(*Dict), stack[sp-1])
 			sp -= 2

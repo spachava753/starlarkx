@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 22
+const Version = 23
 
 type Opcode uint8
 
@@ -114,6 +114,7 @@ const (
 	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
 	MAKEDICT     //              - MAKEDICT     dict
 	MAKESET      //              - MAKESET      set
+	SETEXTEND    // set iterable SETEXTEND    -
 	DICTMERGE    // dict mapping DICTMERGE    - (unique keys)
 	EXTEND       // list iterable EXTEND       -
 	LISTTOTUPLE  //          list LISTTOTUPLE  tuple
@@ -197,6 +198,7 @@ var opcodeNames = [...]string{
 	LT:           "lt",
 	LTLT:         "ltlt",
 	MAKESET:      "makeset",
+	SETEXTEND:    "setextend",
 	DICTMERGE:    "dictmerge",
 	EXTEND:       "extend",
 	LISTTOTUPLE:  "listtotuple",
@@ -279,6 +281,7 @@ var stackEffect = [...]int8{
 	LT:           -1,
 	LTLT:         -1,
 	MAKESET:      +1,
+	SETEXTEND:    -2,
 	DICTMERGE:    -2,
 	EXTEND:       -2,
 	LISTTOTUPLE:  0,
@@ -1461,9 +1464,14 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		fcomp.emit(MAKESET)
 		for _, element := range e.List {
 			fcomp.emit(DUP)
+			op := SETADD
+			pos := syntax.Start(element)
+			if star, ok := element.(*syntax.UnaryExpr); ok && star.Op == syntax.STAR {
+				element, op = star.X, SETEXTEND
+			}
 			fcomp.expr(element)
-			fcomp.setPos(syntax.Start(element))
-			fcomp.emit(SETADD)
+			fcomp.setPos(pos)
+			fcomp.emit(op)
 		}
 
 	case *syntax.DictExpr:
