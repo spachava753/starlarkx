@@ -207,7 +207,7 @@ features that need separate decisions.
 | Builtins / `issubclass` | `STARLARK` | `DEFAULT` | `YES` | Keep `issubclass` unsupported. | Classes and inheritance are unsupported. |
 | Builtins / `iter` | `OPEN` | - | - | - | - |
 | Builtins / `locals` | `OPEN` | - | - | - | - |
-| Builtins / `map` | `STARLARKX` | `DEFAULT` | `NO` | Provide `map(function, iterable, /, *iterables)` and return a new list immediately. Require a callable and at least one iterable. Pass one item from each input to the function for each result, preserving order and stopping at the shortest input. Use StarlarkX iteration and mutation rules; callback errors stop evaluation. The optional `strict` behavior is a separate decision. | Add a convenient way to transform items, consistent with the lists returned by `enumerate`, `zip`, and `reversed`. |
+| Builtins / `map` | `STARLARKX` | `DEFAULT` | `YES` | Provide `map(function, iterable, /, *iterables)` and return a new list immediately. Require a callable and at least one iterable. Pass one item from each input to the function for each result, preserving order and stopping at the shortest input. Use StarlarkX iteration and mutation rules; callback errors stop evaluation. The optional `strict` behavior is a separate decision. | Add a convenient way to transform items, consistent with the lists returned by `enumerate`, `zip`, and `reversed`. |
 | Builtins / `memoryview` | `OPEN` | - | - | - | - |
 | Builtins / `next` | `OPEN` | - | - | - | - |
 | Builtins / `object` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `object` constructor and base class unsupported. | Use existing values and host objects without adding a class hierarchy. |
@@ -332,6 +332,7 @@ after loading, and easier to check before running.
 | Text percent formatting | Supports mapping keys, `#0- +` flags, fixed or `*` width and precision, ignored `h`/`l`/`L` modifiers, and `%diouxXeEfFgGcrsa` conversions with Python argument-consumption rules. Conversion protocols are limited to Starlark's available values, and bytes values do not act as format strings. | Supports the same text-string grammar and conversion behavior, plus user-defined numeric/string protocols; `bytes` has a related binary formatting operation. | Aligned for available text values / restriction |
 | Brace formatting (`str.format`, `str.format_map`, `format`) | Supports attribute and item field traversal, `!s`/`!r`/`!a`, one-level nested fields, and the standard format specification for strings, integers, floats, and booleans. The `n` presentation is locale-neutral, and other values accept only an empty specification. | Supports the same syntax through all three interfaces, with locale-aware `n`, complex numbers, and user-defined `__format__` protocols. | Aligned for available value types / restriction |
 | `filter` | `filter(function, iterable, /)` returns a new list eagerly, keeping original items whose callback result is truthy. `None` tests the items themselves. Uses StarlarkX iteration, truth, and mutation rules. | Returns a lazy iterator with the same selection rule over Python values. | Eager result / value-model divergence |
+| `map` | `map(function, iterable, /, *iterables)` returns a new list eagerly. Calls the function with one item from each input and stops at the shortest input. Uses StarlarkX iteration and mutation rules; keywords are rejected. | Returns a lazy iterator and also accepts `strict=True` to reject unequal input lengths. | Eager result / restriction |
 | Float parsing protocols | `float` accepts only bool, int, float, or string and errors on overflow. | Also participates in Python's object conversion protocols and accepts infinity-producing overflow strings. | Restriction / divergence |
 | Extensibility | Only Go-defined values can add fields, methods, call behavior, truth, hashing, comparison, iteration, and operators. | Python code can implement these through classes and special methods. | Omission at language level |
 
@@ -424,14 +425,14 @@ StarlarkX currently provides these built-in names:
 ```text
 None True False
 abs all any ascii bin bool bytes callable chr dict dir divmod enumerate fail
-float filter format getattr hasattr hash hex int len list max min oct ord pow print range
+float filter format getattr hasattr hash hex int len list map max min oct ord pow print range
 repr reversed round set sorted str sum tuple type zip
 ```
 
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
 predeclared names before evaluation.
 
-The following 31 functions and types from Python 3.14's
+The following 30 functions and types from Python 3.14's
 [Built-in Functions reference](https://docs.python.org/3.14/library/functions.html)
 are missing. Each has its own row in the decision register. This list does not
 include exception classes, constants, or the extra interactive helpers installed
@@ -465,7 +466,6 @@ expose its own APIs.
 | `issubclass` | Checks whether a class inherits from another class. | Unsupported; classes and inheritance are not part of the language. |
 | `iter` | Gets an iterator, or repeatedly calls a function until it returns a sentinel value. | Needs language-visible iterators and rules for both call forms. |
 | `locals` | Returns names in the current local scope. | Depends on whether and how local variables can be inspected. |
-| `map` | Returns an iterator that applies a function to items from one or more iterables. | Planned: return a list immediately and stop at the shortest input. Not implemented. Python 3.14's optional `strict` check for unequal input lengths remains a separate open decision. |
 | `memoryview` | Provides a view of another object's buffer without copying it. | Needs buffer support and rules for shared data, writes, and freezing. |
 | `next` | Gets the next item from an iterator, optionally returning a default at the end. | Needs language-visible iterators and a rule for exhaustion without a default. |
 | `object` | Creates a basic object and serves as the base of Python's class hierarchy. | Unsupported; existing values and host objects do not need Python's base class. |
@@ -478,7 +478,7 @@ expose its own APIs.
 | `vars` | Returns an object's attribute dictionary, or local names when called without an argument. | Needs decisions on attribute dictionaries and local-scope inspection. |
 
 We want functions to be able to return iterators eventually, but that design is
-still open. For now, `map` and `filter` will be list-returning conveniences.
+still open. For now, `map` and `filter` return lists immediately.
 Adding iterator support later will not automatically change these return types.
 
 Built-in type methods are also a subset rather than a compatibility layer:

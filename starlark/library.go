@@ -64,6 +64,7 @@ func init() {
 		"int":       NewBuiltin("int", int_),
 		"len":       NewBuiltin("len", len_),
 		"list":      NewBuiltin("list", list),
+		"map":       NewBuiltin("map", map_),
 		"max":       NewBuiltin("max", minmax),
 		"min":       NewBuiltin("min", minmax),
 		"oct":       NewBuiltin("oct", intBase),
@@ -1696,6 +1697,49 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 		}
 	}
 	return NewList(result), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#map
+func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if len(kwargs) != 0 {
+		return nil, fmt.Errorf("map: unexpected keyword arguments")
+	}
+	if len(args) < 2 {
+		return nil, fmt.Errorf("map: got %d arguments, want at least 2", len(args))
+	}
+	function, ok := args[0].(Callable)
+	if !ok {
+		return nil, fmt.Errorf("map: got %s, want callable", args[0].Type())
+	}
+	iters := make([]Iterator, len(args)-1)
+	defer func() {
+		for _, iter := range iters {
+			if iter != nil {
+				iter.Done()
+			}
+		}
+	}()
+	for i, arg := range args[1:] {
+		iters[i] = Iterate(arg)
+		if iters[i] == nil {
+			return nil, fmt.Errorf("map: argument #%d is not iterable: %s", i+2, arg.Type())
+		}
+	}
+	var result []Value
+	for {
+		// A host callable may retain its argument tuple.
+		row := make(Tuple, len(iters))
+		for i, iter := range iters {
+			if !iter.Next(&row[i]) {
+				return NewList(result), nil
+			}
+		}
+		value, err := Call(thread, function, row, nil)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, value)
+	}
 }
 
 // ---- methods of built-in types ---

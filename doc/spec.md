@@ -3490,6 +3490,26 @@ iterable sequence x.
 
 With no argument, `list()` returns a new empty list.
 
+### map
+
+`map(function, iterable, /, *iterables)` returns a new list of function results.
+It accepts a callable and one or more iterables, all supplied positionally.
+It takes one item from each input, from left to right, and calls the function
+with those items as positional arguments. It stops when an input runs out.
+All callbacks finish before the list is returned.
+
+```python
+map(abs, [-2, 0, 3])                              # [2, 0, 3]
+map(lambda a, b: a + b, [1, 2, 3], [10, 20])      # [11, 22]
+```
+
+The function and every input are checked even if an input is empty.
+Strings require an explicit iterable view. All input iterators remain active
+during callbacks, preventing mutation of the iterated collections. An error
+in a callback stops evaluation. Every iterator is released on success or
+failure. When inputs have different lengths, an earlier input may supply
+one extra item before a later input runs out.
+
 ### max
 
 `max(iterable)` returns the greatest element of `iterable`. With two or more
