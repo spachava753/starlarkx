@@ -1424,13 +1424,17 @@ func set(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#sorted
 func sorted(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	// Oddly, Python's sorted permits all arguments to be positional, thus so do we.
+	if err := checkPositionalArgs("sorted", args, nil, 1, 1); err != nil {
+		return nil, err
+	}
 	var iterable Iterable
+	if err := UnpackArgs("sorted", args, nil, "iterable", &iterable); err != nil {
+		return nil, err
+	}
 	var key Callable
 	var reverse bool
-	if err := UnpackArgs("sorted", args, kwargs,
-		"iterable", &iterable,
-		"key?", &key,
+	if err := UnpackArgs("sorted", nil, kwargs,
+		"key??", &key,
 		"reverse?", &reverse,
 	); err != nil {
 		return nil, err

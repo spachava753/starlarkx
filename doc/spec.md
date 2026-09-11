@@ -3711,16 +3711,21 @@ and command enable it; explicit `FileOptions` callers use `Set: true`.
 
 ### sorted
 
-`sorted(x)` returns a new list containing the elements of the iterable sequence x,
-in sorted order.  The sort algorithm is stable.
+`sorted(iterable, /, *, key=None, reverse=False)` returns a new list containing
+its iterable's elements in sorted order. Exactly one positional argument is
+required; `key` and `reverse` are keyword-only. The sort algorithm is stable,
+including when `reverse` is true, and uses ordinary StarlarkX `<` comparisons.
 
-The optional `key` parameter specifies a function of one argument to apply to
-obtain each value's sort key. If omitted, values themselves are compared. An
-explicit `None` is not accepted as a key.
+The optional `key` parameter must be a callable or `None`. A callable is applied
+once to each element in input order to obtain its sort key. An omitted or
+explicit `None` key compares the elements directly. `reverse` must be an actual
+Boolean; `True` requests descending order. These argument types are checked even
+for empty input.
 
-The optional Boolean `reverse` parameter causes results to be returned in
-reverse sorted order. Unlike current Python, `key` and `reverse` may be supplied
-positionally or by name, in that order.
+The input is collected eagerly into a new list and is not reordered. Its
+iterator remains active during key evaluation and sorting, preserving the usual
+StarlarkX restriction against mutating an actively iterated source. Errors
+propagate normally and release the iterator.
 
 ```python
 sorted(set("harbors".codepoints()))                             # ['a', 'b', 'h', 'o', 'r', 's']

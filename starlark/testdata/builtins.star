@@ -158,7 +158,33 @@ assert.eq(sorted(["two", "three", "four"], key=len),
           ["two", "four", "three"])
 assert.eq(sorted(["two", "three", "four"], key=len, reverse=True),
           ["three", "four", "two"])
-assert.fails(lambda: sorted([1, 2, 3], key=None), "got NoneType, want callable")
+assert.eq(sorted([3, 1, 2], key=None), [1, 2, 3])
+assert.eq(sorted([3, 1, 2], key=None, reverse=True), [3, 2, 1])
+assert.eq(sorted([], key=None), [])
+assert.fails(sorted, "sorted: got 0 arguments, want 1")
+assert.fails(lambda: sorted([1], None), "sorted: got 2 arguments, want 1")
+assert.fails(lambda: sorted([1], None, False), "sorted: got 3 arguments, want 1")
+assert.fails(lambda: sorted(iterable=[1]), "sorted: got 0 arguments, want 1")
+assert.fails(lambda: sorted([1], iterable=[2]), 'sorted: unexpected keyword argument "iterable"')
+assert.fails(lambda: sorted([1], unknown=True), 'sorted: unexpected keyword argument "unknown"')
+assert.fails(lambda: sorted([1], reverse=1), "got int, want bool")
+assert.fails(lambda: sorted([1], reverse=None), "got NoneType, want bool")
+assert.fails(lambda: sorted([], key=0), "got int, want callable")
+
+sorted_source = [3, 1, 2]
+sorted_calls = []
+def sorted_key(x):
+    sorted_calls.append(x)
+    return -x
+assert.eq(sorted(sorted_source, key=sorted_key), [3, 2, 1])
+assert.eq(sorted_calls, [3, 1, 2])
+assert.eq(sorted_source, [3, 1, 2])
+assert.fails(lambda: sorted(sorted_source, key=lambda _: fail("key failed")), "key failed")
+assert.eq(sorted_source, [3, 1, 2])
+assert.fails(lambda: sorted(sorted_source, key=lambda _: sorted_source.append(4)), "during iteration")
+sorted_source.append(4) # failed key evaluation released the source iterator
+assert.eq(sorted_source, [3, 1, 2, 4])
+assert.eq(sorted([("a", 1), ("b", 1)], key=lambda x: x[1], reverse=True), [("a", 1), ("b", 1)])
 # sort is stable
 pairs = [(4, 0), (3, 1), (4, 2), (2, 3), (3, 4), (1, 5), (2, 6), (3, 7)]
 assert.eq(sorted(pairs, key=lambda x: x[0]),
