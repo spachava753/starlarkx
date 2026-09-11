@@ -407,6 +407,11 @@ loop:
 			iterstack[n].Done()
 			iterstack = iterstack[:n]
 
+		case compile.TOSTRING:
+			if _, ok := stack[sp-1].(String); !ok {
+				stack[sp-1] = String(stack[sp-1].String())
+			}
+
 		case compile.NOT:
 			stack[sp-1] = !stack[sp-1].Truth()
 

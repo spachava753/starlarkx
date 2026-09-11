@@ -57,7 +57,7 @@ PrimaryExpr = Operand
             .
 
 Operand = identifier
-        | int | float | string | bytes
+        | int | float | string | bytes | fstring
         | ListExpr | ListComp
         | DictExpr | DictComp | SetComp
         | '(' [Expression [',']] ')'
@@ -115,6 +115,9 @@ LoopVariables = PrimaryExpr {',' PrimaryExpr} .
 - spaces: newline, eof, indent, outdent.
 - identifier.
 - literals: bytes, string, int, float.
+- fstring: lowercase f followed by a single-, double-, or triple-quoted string.
+  Fields contain one identifier with optional surrounding spaces. Doubled
+  braces produce literal braces; text segments accept ordinary string escapes.
 - plus all quoted tokens such as '+=', 'return'.
 
 # Notes:

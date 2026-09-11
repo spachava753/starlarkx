@@ -342,6 +342,31 @@ b"		# "a\\\nb"
 It is an error for a backslash to appear within a non-raw string literal other
 than as part of one of the escapes described above.
 
+### Interpolated strings
+
+An `f` prefix enables name interpolation in a single-, double-, or triple-quoted
+string. Each `{name}` field looks up a variable using the usual scope rules
+and converts its value as `str` does. Spaces may surround the name.
+Names are looked up and converted from left to right. Rebinding a name called
+`str` does not change this conversion.
+
+```python
+name = "Ada"
+count = 3
+f"Hello {name}, you have { count } messages"  # "Hello Ada, you have 3 messages"
+f'{{{name}}}'                                # "{Ada}"
+```
+
+Use `{{` and `}}` for literal braces. Text outside fields accepts the ordinary
+string escapes. Escapes are decoded after fields are identified, so
+`f"\x7bname\x7d"` produces the literal text `"{name}"`.
+
+A field must contain a single variable name. Empty fields, unmatched braces,
+expressions, calls, attribute access, indexing, conversions such as `!r`,
+format specifications, and debug `=` are errors. The lowercase `f` prefix
+cannot be combined with raw or bytes prefixes. Interpolated strings cannot
+be used as the literal module or export names in `load` statements.
+
 ### Bytes literals
 
 A Starlark bytes literal denotes a `bytes` value. It has the same quoted and
@@ -1684,7 +1709,7 @@ PrimaryExpr = Operand
             .
 
 Operand = identifier
-        | int | float | string | bytes
+        | int | float | string | bytes | fstring
         | ListExpr | ListComp
         | DictExpr | DictComp | SetComp
         | '(' [Expression] [,] ')'
@@ -1719,6 +1744,8 @@ Primary = int | float | string | bytes
 Evaluation of a literal yields a value of the given type (`bytes`, `string`,
 `int`, or `float`) with the given value.
 See [Literals](#lexical-elements) for details.
+An [interpolated string](#interpolated-strings) is a separate operand that
+constructs text from literal segments and variable values.
 
 ### Parenthesized expressions
 

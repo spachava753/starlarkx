@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 17
+const Version = 18
 
 type Opcode uint8
 
@@ -114,6 +114,7 @@ const (
 	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
 	MAKEDICT     //              - MAKEDICT     dict
 	MAKESET      //              - MAKESET      set
+	TOSTRING     //          value TOSTRING     string
 	SETADD       //       set elem SETADD       -
 
 	// --- opcodes with an argument must go below this line ---
@@ -192,6 +193,7 @@ var opcodeNames = [...]string{
 	LT:           "lt",
 	LTLT:         "ltlt",
 	MAKESET:      "makeset",
+	TOSTRING:     "tostring",
 	SETADD:       "setadd",
 	MAKEDICT:     "makedict",
 	MAKEFUNC:     "makefunc",
@@ -269,6 +271,7 @@ var stackEffect = [...]int8{
 	LT:           -1,
 	LTLT:         -1,
 	MAKESET:      +1,
+	TOSTRING:     0,
 	SETADD:       -2,
 	MAKEDICT:     +1,
 	MAKEFUNC:     0,
@@ -1332,6 +1335,18 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 
 	case *syntax.Ident:
 		fcomp.lookup(e)
+
+	case *syntax.FString:
+		for i, part := range e.Parts {
+			fcomp.expr(part)
+			if _, ok := part.(*syntax.Ident); ok {
+				fcomp.setPos(syntax.Start(part))
+				fcomp.emit(TOSTRING)
+			}
+			if i > 0 {
+				fcomp.emit(PLUS)
+			}
+		}
 
 	case *syntax.Literal:
 		// e.Value is int64, float64, *bigInt, string

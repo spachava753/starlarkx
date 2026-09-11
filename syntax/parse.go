@@ -864,6 +864,14 @@ func (p *parser) parsePrimary() Expr {
 	case IDENT:
 		return p.parseIdent()
 
+	case FSTRING:
+		x, err := parseFString(p.tokval.raw, p.tokval.pos)
+		if err != nil {
+			p.in.error(p.tokval.pos, err.Error())
+		}
+		p.nextToken()
+		return x
+
 	case INT, FLOAT, STRING, BYTES:
 		var val any
 		tok := p.tok

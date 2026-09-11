@@ -30,11 +30,12 @@ const (
 	OUTDENT
 
 	// Tokens with values
-	IDENT  // x
-	INT    // 123
-	FLOAT  // 1.23e45
-	STRING // "foo" or 'foo' or '''foo''' or r'foo' or r"foo"
-	BYTES  // b"foo", etc
+	IDENT   // x
+	INT     // 123
+	FLOAT   // 1.23e45
+	FSTRING // f"Hello {name}"
+	STRING  // "foo" or 'foo' or '''foo''' or r'foo' or r"foo"
+	BYTES   // b"foo", etc
 
 	// Punctuation
 	PLUS          // +
@@ -141,6 +142,7 @@ var tokenNames = [...]string{
 	IDENT:         "identifier",
 	INT:           "int literal",
 	FLOAT:         "float literal",
+	FSTRING:       "interpolated string literal",
 	STRING:        "string literal",
 	PLUS:          "+",
 	MINUS:         "-",
@@ -682,7 +684,7 @@ start:
 
 	// identifier or keyword
 	if isIdentStart(c) {
-		if (c == 'r' || c == 'b') && len(sc.rest) > 1 && (sc.rest[1] == '"' || sc.rest[1] == '\'') {
+		if (c == 'r' || c == 'b' || c == 'f') && len(sc.rest) > 1 && (sc.rest[1] == '"' || sc.rest[1] == '\'') {
 			//  r"..."
 			//  b"..."
 			sc.readRune()
@@ -936,6 +938,9 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 		}
 	}
 	val.raw = raw.String()
+	if strings.HasPrefix(val.raw, "f") {
+		return FSTRING
+	}
 
 	s, _, isByte, err := unquote(val.raw)
 	if err != nil {

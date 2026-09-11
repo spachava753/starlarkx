@@ -60,6 +60,22 @@ are flag-controlled.  The resolver reports
 any uses of dialect features that have not been enabled.
 
 
+## Name interpolation
+
+The scanner reads an `f`-prefixed string as one token, preserving its source
+text. The parser splits that text at brace fields before decoding escapes.
+Doubled braces become literal braces. Each field is validated as a single
+identifier, and each text segment uses the ordinary string escape decoder.
+The syntax tree stores the resulting text literals and identifier nodes in
+written order, with source positions for the names.
+
+The resolver binds field names in the surrounding lexical scope. The compiler
+emits each part in order, converting each name's value to a string immediately
+after loading it. A conversion instruction preserves string values and uses
+the normal value representation for other types. String addition joins the
+parts. Conversion uses the runtime operation directly, so a local binding of
+`str` cannot affect interpolation.
+
 ## Evaluator
 
 ### Data types

@@ -69,6 +69,11 @@ func Walk(n Node, f func(Node) bool) {
 			Walk(to, f)
 		}
 
+	case *FString:
+		for _, part := range n.Parts {
+			Walk(part, f)
+		}
+
 	case *Ident, *Literal:
 		// no-op
 

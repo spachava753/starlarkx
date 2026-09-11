@@ -664,6 +664,11 @@ func (r *resolver) expr(e syntax.Expr) {
 	case *syntax.Ident:
 		r.use(e)
 
+	case *syntax.FString:
+		for _, part := range e.Parts {
+			r.expr(part)
+		}
+
 	case *syntax.Literal:
 
 	case *syntax.ListExpr:

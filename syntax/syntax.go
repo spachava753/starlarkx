@@ -253,6 +253,20 @@ func (x *Ident) Span() (start, end Position) {
 	return x.NamePos, x.NamePos.add(x.Name)
 }
 
+// An FString interpolates names between literal text parts.
+// Parts contains only string Literals and Idents, in written order.
+type FString struct {
+	commentsRef
+	TokenPos Position
+	Raw      string
+	Parts    []Expr
+}
+
+func (*FString) expr() {}
+func (x *FString) Span() (start, end Position) {
+	return x.TokenPos, x.TokenPos.add(x.Raw)
+}
+
 // A Literal represents a literal string or number.
 type Literal struct {
 	commentsRef
