@@ -118,6 +118,19 @@ func (x *AssignStmt) Span() (start, end Position) {
 	return
 }
 
+// A DelStmt removes indexed elements or slices from collections.
+type DelStmt struct {
+	commentsRef
+	Del Position
+	X   Expr
+}
+
+func (*DelStmt) stmt() {}
+func (x *DelStmt) Span() (start, end Position) {
+	_, end = x.X.Span()
+	return x.Del, end
+}
+
 // A DefStmt represents a function definition.
 type DefStmt struct {
 	commentsRef

@@ -725,40 +725,9 @@ func setSlice(x, lo, hi, stepValue, rhs Value) error {
 		return err
 	}
 	n := list.Len()
-	step := 1
-	if stepValue != None {
-		var err error
-		step, err = boundedSliceInt(stepValue, max(2, n+1))
-		if err != nil {
-			return fmt.Errorf("invalid slice step: %s", err)
-		}
-		if step == 0 {
-			return fmt.Errorf("zero is not a valid slice step")
-		}
-	}
-	start, end := 0, n
-	lower, upper := 0, n
-	if step < 0 {
-		start, end = n-1, -1
-		lower, upper = -1, n-1
-	}
-	for i, bound := range []Value{lo, hi} {
-		if bound == None {
-			continue
-		}
-		index, err := boundedSliceInt(bound, n+1)
-		if err != nil {
-			return fmt.Errorf("invalid slice index: %s", err)
-		}
-		if index < 0 {
-			index += n
-		}
-		index = min(max(index, lower), upper)
-		if i == 0 {
-			start = index
-		} else {
-			end = index
-		}
+	start, end, step, err := listSliceIndices(n, lo, hi, stepValue)
+	if err != nil {
+		return err
 	}
 
 	// Lock while invoking host iterators; snapshotting also makes self-assignment safe.
@@ -796,6 +765,45 @@ func setSlice(x, lo, hi, stepValue, rhs Value) error {
 		list.elems[start+i*step] = value
 	}
 	return nil
+}
+
+// listSliceIndices normalizes bounds for list slice mutation.
+func listSliceIndices(n int, lo, hi, stepValue Value) (start, end, step int, err error) {
+	step = 1
+	if stepValue != None {
+		step, err = boundedSliceInt(stepValue, max(2, n+1))
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("invalid slice step: %s", err)
+		}
+		if step == 0 {
+			return 0, 0, 0, fmt.Errorf("zero is not a valid slice step")
+		}
+	}
+	start, end = 0, n
+	lower, upper := 0, n
+	if step < 0 {
+		start, end = n-1, -1
+		lower, upper = -1, n-1
+	}
+	for i, bound := range []Value{lo, hi} {
+		if bound == None {
+			continue
+		}
+		index, err := boundedSliceInt(bound, n+1)
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("invalid slice index: %s", err)
+		}
+		if index < 0 {
+			index += n
+		}
+		index = min(max(index, lower), upper)
+		if i == 0 {
+			start = index
+		} else {
+			end = index
+		}
+	}
+	return start, end, step, nil
 }
 
 // Clamp arbitrary-size integers before converting to machine indices.

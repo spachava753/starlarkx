@@ -112,6 +112,7 @@ and            elif           in             or
 break          else           lambda         pass
 continue       for            load           return
 def            if             not            while
+del
 ```
 
 The tokens below also may not be used as identifiers although they do not
@@ -125,7 +126,7 @@ assert          finally         raise
 async           from            try
 await           global          with
 class           import          yield
-del             is   
+is
 ```
 <!-- NB: bazelbuild/starlark puts `while` in the second list -->
 
@@ -2708,7 +2709,7 @@ Statement  = DefStmt | IfStmt | ForStmt | SimpleStmt .
 SimpleStmt = SmallStmt {';' SmallStmt} [';'] '\n' .
 SmallStmt  = ReturnStmt
            | BreakStmt | ContinueStmt | PassStmt
-           | AssignStmt
+           | AssignStmt | DelStmt
            | ExprStmt
            | LoadStmt
            .
@@ -2839,9 +2840,53 @@ items[::-1] = items              # alias now contains [3, 8, 0]
 items[:] = []                    # alias now contains []
 ```
 
-This support is for plain assignment. Augmented slice assignment such as
-`items[:] += values` and `del` statements remain unsupported. Reading a slice
-retains its existing bounds-conversion rules.
+Augmented slice assignment such as `items[:] += values` is an error.
+Use [collection deletion](#collection-deletion) to remove elements or slices.
+
+### Collection deletion
+
+`del` removes list elements, list slices, and dictionary entries from the
+existing collection. Other references to the collection see the change.
+
+```grammar {.good}
+DelStmt = 'del' DeleteTargets .
+DeleteTargets = DeleteTarget {',' DeleteTarget} .
+DeleteTarget = PrimaryExpr | '(' [DeleteTargets [',']] ')'
+             | '[' [DeleteTargets [',']] ']' .
+```
+
+Each leaf target must be an index or slice expression. Name and attribute
+deletion are errors, as are starred targets. Several targets may be separated
+by commas or grouped in parentheses or brackets.
+
+```python
+items = [0, 1, 2, 3, 4]
+del items[1]                   # items is [0, 2, 3, 4]
+del items[::-2]                # items is [0, 3]
+mapping = {"a": 1, "b": 2}
+del mapping["a"]               # mapping is {"b": 2}
+```
+
+Targets are processed from left to right. For each target, the collection
+expression is evaluated first, followed by the index or the explicit slice
+bounds in written order. Each expression runs once. Deletion finishes before
+the next target is evaluated. If a target fails, earlier deletions remain in
+effect and later targets are skipped.
+
+List indices use the ordinary integer conversion and negative-index rules.
+An out-of-range index is an error. Dictionary deletion uses ordinary key
+equality and hashing; a missing key is an error. Element deletion accepts only
+lists and dictionaries.
+
+Slice deletion accepts only lists. It uses the same bound normalization as
+[list slice assignment](#list-slice-assignment): integer or `None` bounds,
+clipped positions, positive or negative steps, and a default step of one.
+A zero step or Boolean bound is an error. The selected elements are removed
+and the remaining elements keep their order. An empty selection leaves the
+contents unchanged.
+
+Frozen collections and collections with active iterators reject deletion,
+including empty slice deletions. Name bindings are unchanged by `del`.
 
 ### Augmented assignments
 

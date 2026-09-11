@@ -151,6 +151,25 @@ releases it on completion or insertion failure. Repeated values use ordinary
 set insertion, retaining their first position. The `Set` option applies to
 the whole display, including displays with only starred entries.
 
+## Collection deletion
+
+A deletion statement stores a target expression. The resolver walks grouped
+targets and requires every leaf to be an index or slice. It resolves the
+collection and index expressions as reads, without creating or removing any
+name binding.
+
+The compiler emits each target in order, evaluating the collection and its
+index or bounds before an element-deletion or slice-deletion instruction.
+A failing instruction stops execution, leaving earlier deletions intact.
+
+List slice assignment and deletion share bound normalization. Contiguous
+deletion shifts the remaining suffix down. Strided deletion visits selected
+indices in ascending order, even for a negative step, and compacts surviving
+elements in place. Both clear unused backing-array slots so removed values
+can be collected. Dictionary deletion uses the ordered hash table's existing
+key removal. These operations check the collection's frozen state and active
+iterator count before changing it.
+
 ## Evaluator
 
 ### Data types

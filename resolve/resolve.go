@@ -522,6 +522,9 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 		r.stmts(stmt.False)
 		r.ifstmts--
 
+	case *syntax.DelStmt:
+		r.deleteTarget(stmt.X)
+
 	case *syntax.AssignStmt:
 		r.expr(stmt.RHS)
 		isAugmented := stmt.Op != syntax.EQ
@@ -608,6 +611,25 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 
 	default:
 		log.Panicf("unexpected stmt %T", stmt)
+	}
+}
+
+func (r *resolver) deleteTarget(target syntax.Expr) {
+	switch target := target.(type) {
+	case *syntax.IndexExpr, *syntax.SliceExpr:
+		r.expr(target)
+	case *syntax.ParenExpr:
+		r.deleteTarget(target.X)
+	case *syntax.TupleExpr:
+		for _, element := range target.List {
+			r.deleteTarget(element)
+		}
+	case *syntax.ListExpr:
+		for _, element := range target.List {
+			r.deleteTarget(element)
+		}
+	default:
+		r.errorf(syntax.Start(target), "del requires a collection index or slice target")
 	}
 }
 

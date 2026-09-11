@@ -25,7 +25,7 @@ SimpleStmt = SmallStmt {';' SmallStmt} [';'] '\n' .
 
 SmallStmt = ReturnStmt
           | BreakStmt | ContinueStmt | PassStmt
-          | AssignStmt
+          | AssignStmt | DelStmt
           | ExprStmt
           | LoadStmt
           .
@@ -40,6 +40,11 @@ TargetEntry  = Target | '*' Target .
 Target       = PrimaryExpr | '[' [Targets [',']] ']' | '(' Targets [','] ')' .
 # A star requires a target list; each list permits at most one star.
 # Augmented assignment requires one unstarred, non-sequence target.
+DelStmt      = 'del' DeleteTargets .
+DeleteTargets = DeleteTarget {',' DeleteTarget} .
+DeleteTarget = PrimaryExpr | '(' [DeleteTargets [',']] ')'
+             | '[' [DeleteTargets [',']] ']' .
+# Deletion leaves must be index or slice expressions.
 ExprStmt     = Expression .
 
 LoadStmt = 'load' '(' string {',' [identifier '='] string} [','] ')' .

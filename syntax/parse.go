@@ -341,6 +341,10 @@ func (p *parser) parseSimpleStmt(stmts []Stmt, consumeNL bool) []Stmt {
 //	| expr
 func (p *parser) parseSmallStmt() Stmt {
 	switch p.tok {
+	case DEL:
+		pos := p.nextToken()
+		return &DelStmt{Del: pos, X: p.parseExpr(false)}
+
 	case RETURN:
 		pos := p.nextToken() // consume RETURN
 		var result Expr

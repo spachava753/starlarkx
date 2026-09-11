@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 23
+const Version = 24
 
 type Opcode uint8
 
@@ -114,6 +114,8 @@ const (
 	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
 	MAKEDICT     //              - MAKEDICT     dict
 	MAKESET      //              - MAKESET      set
+	DELINDEX     // x key DELINDEX -
+	DELSLICE     // x lo hi step DELSLICE -
 	SETEXTEND    // set iterable SETEXTEND    -
 	DICTMERGE    // dict mapping DICTMERGE    - (unique keys)
 	EXTEND       // list iterable EXTEND       -
@@ -198,6 +200,8 @@ var opcodeNames = [...]string{
 	LT:           "lt",
 	LTLT:         "ltlt",
 	MAKESET:      "makeset",
+	DELINDEX:     "delindex",
+	DELSLICE:     "delslice",
 	SETEXTEND:    "setextend",
 	DICTMERGE:    "dictmerge",
 	EXTEND:       "extend",
@@ -281,6 +285,8 @@ var stackEffect = [...]int8{
 	LT:           -1,
 	LTLT:         -1,
 	MAKESET:      +1,
+	DELINDEX:     -2,
+	DELSLICE:     -4,
 	SETEXTEND:    -2,
 	DICTMERGE:    -2,
 	EXTEND:       -2,
@@ -1120,6 +1126,9 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 
 		fcomp.block = done
 
+	case *syntax.DelStmt:
+		fcomp.deleteTarget(stmt.X)
+
 	case *syntax.AssignStmt:
 		switch stmt.Op {
 		case syntax.EQ:
@@ -1282,6 +1291,37 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 	default:
 		start, _ := stmt.Span()
 		log.Panicf("%s: exec: unexpected statement %T", start, stmt)
+	}
+}
+
+func (fcomp *fcomp) deleteTarget(target syntax.Expr) {
+	switch target := target.(type) {
+	case *syntax.ParenExpr:
+		fcomp.deleteTarget(target.X)
+	case *syntax.TupleExpr:
+		for _, element := range target.List {
+			fcomp.deleteTarget(element)
+		}
+	case *syntax.ListExpr:
+		for _, element := range target.List {
+			fcomp.deleteTarget(element)
+		}
+	case *syntax.IndexExpr:
+		fcomp.expr(target.X)
+		fcomp.expr(target.Y)
+		fcomp.setPos(target.Lbrack)
+		fcomp.emit(DELINDEX)
+	case *syntax.SliceExpr:
+		fcomp.expr(target.X)
+		for _, bound := range []syntax.Expr{target.Lo, target.Hi, target.Step} {
+			if bound == nil {
+				fcomp.emit(NONE)
+			} else {
+				fcomp.expr(bound)
+			}
+		}
+		fcomp.setPos(target.Lbrack)
+		fcomp.emit(DELSLICE)
 	}
 }
 

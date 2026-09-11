@@ -33,6 +33,9 @@ func Walk(n Node, f func(Node) bool) {
 		walkStmts(n.True, f)
 		walkStmts(n.False, f)
 
+	case *DelStmt:
+		Walk(n.X, f)
+
 	case *AssignStmt:
 		Walk(n.LHS, f)
 		Walk(n.RHS, f)

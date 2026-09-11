@@ -407,6 +407,20 @@ loop:
 			iterstack[n].Done()
 			iterstack = iterstack[:n]
 
+		case compile.DELINDEX:
+			err = deleteIndex(stack[sp-2], stack[sp-1])
+			sp -= 2
+			if err != nil {
+				break loop
+			}
+
+		case compile.DELSLICE:
+			err = deleteSlice(stack[sp-4], stack[sp-3], stack[sp-2], stack[sp-1])
+			sp -= 4
+			if err != nil {
+				break loop
+			}
+
 		case compile.SETEXTEND:
 			err = extendSetDisplay(stack[sp-2].(*Set), stack[sp-1])
 			sp -= 2

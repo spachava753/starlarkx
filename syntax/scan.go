@@ -98,6 +98,7 @@ const (
 	PASS
 	RETURN
 	WHILE
+	DEL
 
 	// Reserved words (following Python); unused in Starlark
 
@@ -106,7 +107,6 @@ const (
 	ASYNC
 	AWAIT
 	CLASS
-	DEL
 	EXCEPT
 	FINALLY
 	FROM
@@ -1115,6 +1115,7 @@ var keywordToken = map[string]Token{
 	"break":    BREAK,
 	"continue": CONTINUE,
 	"def":      DEF,
+	"del":      DEL,
 	"elif":     ELIF,
 	"else":     ELSE,
 	"for":      FOR,
@@ -1134,7 +1135,6 @@ var keywordToken = map[string]Token{
 	"async":    ASYNC,
 	"await":    AWAIT,
 	"class":    CLASS,
-	"del":      DEL,
 	"except":   EXCEPT,
 	"finally":  FINALLY,
 	"from":     FROM,
