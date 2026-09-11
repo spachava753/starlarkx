@@ -2,6 +2,17 @@
 
 load("assert.star", "assert")
 
+# numeric separators
+assert.eq(1_000_000, 1000000)
+assert.eq(0_0_0, 0)
+assert.eq(0xff_ff, 65535)
+assert.eq(0X_FF, 255)
+assert.eq(0b_1010_0101, 165)
+assert.eq(0o_7_5_5, 493)
+assert.eq(123_456_789_123_456_789_123_456_789, 123456789123456789123456789)
+assert.eq(0x_123456789abcdef0123456789abcdef, 0x123456789abcdef0123456789abcdef)
+assert.eq(-1_000, -1000)
+
 # basic arithmetic
 assert.eq(0 - 1, -1)
 assert.eq(0 + 1, +1)

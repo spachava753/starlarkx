@@ -136,7 +136,8 @@ before resolving any of them.
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
 | Syntax / Function parameters | `OPEN` | - | - | - | - |
-| Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Accept the Python 3.14 numeric literal forms covered by this area, including valid digit-separator placement and imaginary literals. | Improve Python source compatibility and preserve familiar readable forms for large numeric constants. |
+| Syntax / Numeric separators | `PYTHON` | `DEFAULT` | `YES` | Accept Python 3.14 underscore placement in integer and decimal floating-point literals: single separators between digits and optionally immediately after a binary, octal, or hexadecimal prefix. Reject repeated, trailing, or punctuation-adjacent separators. This row covers separator syntax, not numeric ranges, conversions from strings, or imaginary literals. | Make long numeric literals readable without changing the numeric value model. |
+| Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Accept the other Python 3.14 numeric literal forms, including imaginary literals; digit-separator placement is tracked separately. | Preserve familiar literal syntax while tracking the remaining numeric forms independently. |
 | Syntax / String escapes | `OPEN` | - | - | - | - |
 | Syntax / Formatting literals | `OPEN` | - | - | - | - |
 | Syntax / Loading | `OPEN` | - | - | - | - |
@@ -307,7 +308,8 @@ construct but intentionally or currently accepts less syntax.
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
 | Loop clauses | `for` and `while` support Python-style `else`: it runs on normal completion, not on `break`, return, or error. Existing dialect restrictions on loops remain. |
 | Function parameters | No positional-only `/` marker, annotations, return annotations, type parameters, or decorators. |
-| Numeric literals | Numeric digit separators such as `1_000` are rejected. Complex and imaginary literals are absent. |
+| Numeric separators | Integer and decimal float literals accept Python's underscore placement and ignore separators when computing values. Invalid placements are rejected. |
+| Numeric literals | Complex and imaginary literals are absent. Existing numeric range limits remain: binary and octal literals must fit a signed 64-bit integer, while decimal and hexadecimal integers may be arbitrarily large; float literal overflow is rejected. |
 | String escapes | Unknown escapes are errors rather than retained literally. String `\x` and octal escapes are restricted to ASCII; bytes escapes above 255 are errors. Python's string and bytes escape ranges differ. Named Unicode escapes (`\N{...}`) are absent. |
 | Formatting literals | There are no f-strings or template string literals. |
 | Loading | `load` is top-level-only and all module/export names must be literals; it cannot be used as a dynamic function. |
@@ -459,7 +461,7 @@ A practical extension plan can group work by architectural depth:
    semantics, eager/lazy return types, builtin signatures, and argument
    evaluation order. These changes are localized conceptually but can
    break Starlark code.
-2. **Extend parser and evaluator**: literal concatenation, numeric separators,
+2. **Extend parser and evaluator**: literal concatenation,
    richer unpacking, augmented slice assignment, and f-strings.
 3. **Add new runtime subsystems**: exceptions, generators/iterators and generator
    expressions, classes and Python's object protocol, imports/module objects,

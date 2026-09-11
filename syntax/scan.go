@@ -949,163 +949,140 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 	}
 }
 
+// scanNumber scans integer and decimal floating-point literals. The original
+// spelling stays in val.raw; separators are removed only for value conversion.
 func (sc *scanner) scanNumber(val *tokenValue, c rune) Token {
-	// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#lexical-elements
-	//
-	// Python features not supported:
-	// - integer literals of >64 bits of precision
-	// - 123L or 123l long suffix
-	// - traditional octal: 0755
-	// https://docs.python.org/2/reference/lexical_analysis.html#integer-and-long-integer-literals
-
 	start := sc.pos
 	fraction, exponent := false, false
+	base := 0
 
 	if c == '.' {
-		// dot or start of fraction
 		sc.readRune()
-		c = sc.peekRune()
-		if !isdigit(c) {
+		if !isdigit(sc.peekRune()) {
 			sc.endToken(val)
 			return DOT
 		}
 		fraction = true
-	} else if c == '0' {
-		// hex, octal, binary or float
-		sc.readRune()
-		c = sc.peekRune()
-
-		if c == '.' {
-			fraction = true
-		} else if c == 'x' || c == 'X' {
-			// hex
+		sc.scanDigits(isdigit, false)
+	} else {
+		if c == '0' {
 			sc.readRune()
-			c = sc.peekRune()
-			if !isxdigit(c) {
-				sc.error(start, "invalid hex literal")
+			var valid func(rune) bool
+			switch sc.peekRune() {
+			case 'x', 'X':
+				base, valid = 16, isxdigit
+			case 'o', 'O':
+				base, valid = 8, isodigit
+			case 'b', 'B':
+				base, valid = 2, isbdigit
 			}
-			for isxdigit(c) {
-				sc.readRune()
-				c = sc.peekRune()
-			}
-		} else if c == 'o' || c == 'O' {
-			// octal
-			sc.readRune()
-			c = sc.peekRune()
-			if !isodigit(c) {
-				sc.error(sc.pos, "invalid octal literal")
-			}
-			for isodigit(c) {
-				sc.readRune()
-				c = sc.peekRune()
-			}
-		} else if c == 'b' || c == 'B' {
-			// binary
-			sc.readRune()
-			c = sc.peekRune()
-			if !isbdigit(c) {
-				sc.error(sc.pos, "invalid binary literal")
-			}
-			for isbdigit(c) {
-				sc.readRune()
-				c = sc.peekRune()
+			if valid != nil {
+				sc.readRune() // base prefix
+				if sc.peekRune() == '_' {
+					sc.readRune() // one separator is allowed immediately after the prefix
+				}
+				if !valid(sc.peekRune()) {
+					switch base {
+					case 16:
+						sc.error(start, "invalid hex literal")
+					case 8:
+						sc.error(sc.pos, "invalid octal literal")
+					case 2:
+						sc.error(sc.pos, "invalid binary literal")
+					}
+				}
+				sc.scanDigits(valid, false)
+			} else {
+				sc.scanDigits(isdigit, true)
 			}
 		} else {
-			// float (or obsolete octal "0755")
-			allzeros, octal := true, true
-			for isdigit(c) {
-				if c != '0' {
-					allzeros = false
-				}
-				if c > '7' {
-					octal = false
-				}
-				sc.readRune()
-				c = sc.peekRune()
-			}
-			if c == '.' {
-				fraction = true
-			} else if c == 'e' || c == 'E' {
-				exponent = true
-			} else if octal && !allzeros {
-				sc.endToken(val)
-				sc.errorf(sc.pos, "obsolete form of octal literal; use 0o%s", val.raw[1:])
-			}
+			sc.scanDigits(isdigit, false)
 		}
-	} else {
-		// decimal
-		for isdigit(c) {
-			sc.readRune()
-			c = sc.peekRune()
-		}
-
-		if c == '.' {
+		if base == 0 && sc.peekRune() == '.' {
 			fraction = true
-		} else if c == 'e' || c == 'E' {
-			exponent = true
+			sc.readRune()
+			sc.scanDigits(isdigit, false)
 		}
 	}
 
-	if fraction {
-		sc.readRune() // consume '.'
-		c = sc.peekRune()
-		for isdigit(c) {
+	if base == 0 && (sc.peekRune() == 'e' || sc.peekRune() == 'E') {
+		exponent = true
+		sc.readRune()
+		if sc.peekRune() == '+' || sc.peekRune() == '-' {
 			sc.readRune()
-			c = sc.peekRune()
 		}
-
-		if c == 'e' || c == 'E' {
-			exponent = true
+		if !isdigit(sc.peekRune()) {
+			sc.error(sc.pos, "invalid float literal")
 		}
-	}
-
-	if exponent {
-		sc.readRune() // consume [eE]
-		c = sc.peekRune()
-		if c == '+' || c == '-' {
-			sc.readRune()
-			c = sc.peekRune()
-			if !isdigit(c) {
-				sc.error(sc.pos, "invalid float literal")
-			}
-		}
-		for isdigit(c) {
-			sc.readRune()
-			c = sc.peekRune()
-		}
+		sc.scanDigits(isdigit, false)
 	}
 
 	sc.endToken(val)
+	s := strings.ReplaceAll(val.raw, "_", "")
 	if fraction || exponent {
 		var err error
-		val.float, err = strconv.ParseFloat(val.raw, 64)
+		val.float, err = strconv.ParseFloat(s, 64)
 		if err != nil {
 			sc.error(sc.pos, "invalid float literal")
 		}
 		return FLOAT
-	} else {
-		var err error
-		s := val.raw
-		val.bigInt = nil
-		if len(s) > 2 && s[0] == '0' && (s[1] == 'o' || s[1] == 'O') {
-			val.int, err = strconv.ParseInt(s[2:], 8, 64)
-		} else if len(s) > 2 && s[0] == '0' && (s[1] == 'b' || s[1] == 'B') {
-			val.int, err = strconv.ParseInt(s[2:], 2, 64)
-		} else {
-			val.int, err = strconv.ParseInt(s, 0, 64)
-			if err != nil {
-				num := new(big.Int)
-				var ok bool
-				val.bigInt, ok = num.SetString(s, 0)
-				if ok {
-					err = nil
-				}
-			}
+	}
+
+	// Preserve the diagnostic for traditional octal and reject nonzero
+	// decimal integers with leading zeros, with or without separators.
+	if base == 0 && len(s) > 1 && s[0] == '0' {
+		allzeros, octal := true, true
+		for _, digit := range s[1:] {
+			allzeros = allzeros && digit == '0'
+			octal = octal && digit <= '7'
 		}
-		if err != nil {
+		if !allzeros {
+			if octal {
+				sc.errorf(sc.pos, "obsolete form of octal literal; use 0o%s", s[1:])
+			}
 			sc.error(start, "invalid int literal")
 		}
-		return INT
+	}
+
+	val.bigInt = nil
+	var err error
+	// Keep existing range rules for binary and octal literals.
+	if base == 8 || base == 2 {
+		val.int, err = strconv.ParseInt(s[2:], base, 64)
+	} else {
+		val.int, err = strconv.ParseInt(s, 0, 64)
+		if err != nil {
+			num := new(big.Int)
+			var ok bool
+			val.bigInt, ok = num.SetString(s, 0)
+			if ok {
+				err = nil
+			}
+		}
+	}
+	if err != nil {
+		sc.error(start, "invalid int literal")
+	}
+	return INT
+}
+
+// scanDigits accepts single underscores only between digits of the chosen base.
+// previous is true when the caller has already consumed a digit.
+func (sc *scanner) scanDigits(valid func(rune) bool, previous bool) {
+	for {
+		c := sc.peekRune()
+		if valid(c) {
+			sc.readRune()
+			previous = true
+		} else if c == '_' {
+			sc.readRune()
+			if !previous || !valid(sc.peekRune()) {
+				sc.error(sc.pos, "invalid underscore in numeric literal")
+			}
+			previous = false
+		} else {
+			return
+		}
 	}
 }
 

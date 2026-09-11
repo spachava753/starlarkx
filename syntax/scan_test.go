@@ -55,6 +55,29 @@ func scan(src any) (tokens string, err error) {
 	return buf.String(), nil
 }
 
+func TestNumericSeparators(t *testing.T) {
+	for _, source := range []string{
+		"1_000", "0_0_0", "0x_ff_ff", "0X_FF", "0b_1010_0101", "0o_7_5_5",
+		"123_456_789_123_456_789_123_456_789", "0x_123456789abcdef0123456789abcdef",
+		"1_2.3_4", ".1_2", "1_2.", "1_2.e+1_0", "1e1_0", "1e-1_0",
+		"0_8.0", "0_8e0", "00_0.00_1",
+	} {
+		got, err := scan(source)
+		want, wantErr := scan(strings.ReplaceAll(source, "_", ""))
+		if err != nil || wantErr != nil || got != want {
+			t.Errorf("scan %s = %s, %v; stripped = %s, %v", source, got, err, want, wantErr)
+		}
+	}
+	for _, source := range []string{
+		"1_", "1__0", "0__0", "0_x1", "0b_", "0b__1", "0b1_2", "0o_8", "0x__f", "0x_f_",
+		"1_.0", "1._0", "1_e2", "1e_2", "1e+_2", "1e2_", "1e2__3", ".1_", "0_1", "0_8",
+	} {
+		if _, err := scan(source); err == nil {
+			t.Errorf("accepted malformed literal %q", source)
+		}
+	}
+}
+
 func TestScanner(t *testing.T) {
 	for _, test := range []struct {
 		input, want string

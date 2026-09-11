@@ -171,16 +171,16 @@ Integer and floating-point literal tokens are defined by the following grammar:
 
 ```grammar {.good}
 int         = decimal_lit | octal_lit | hex_lit | binary_lit .
-decimal_lit = ('1' … '9') {decimal_digit} | '0' .
-octal_lit   = '0' ('o'|'O') octal_digit {octal_digit} .
-hex_lit     = '0' ('x'|'X') hex_digit {hex_digit} .
-binary_lit  = '0' ('b'|'B') binary_digit {binary_digit} .
+decimal_lit = ('1' … '9') {['_'] decimal_digit} | '0' {['_'] '0'} .
+octal_lit   = '0' ('o'|'O') ['_'] octal_digit {['_'] octal_digit} .
+hex_lit     = '0' ('x'|'X') ['_'] hex_digit {['_'] hex_digit} .
+binary_lit  = '0' ('b'|'B') ['_'] binary_digit {['_'] binary_digit} .
 
 float     = decimals '.' [decimals] [exponent]
           | decimals exponent
           | '.' decimals [exponent]
           .
-decimals  = decimal_digit {decimal_digit} .
+decimals  = decimal_digit {['_'] decimal_digit} .
 exponent  = ('e'|'E') ['+'|'-'] decimals .
 
 decimal_digit = '0' … '9' .
@@ -188,6 +188,18 @@ octal_digit   = '0' … '7' .
 hex_digit     = '0' … '9' | 'A' … 'F' | 'a' … 'f' .
 binary_digit  = '0' | '1' .
 ```
+
+A single underscore may separate adjacent digits or follow a `0b`, `0o`, or
+`0x` base prefix. Separators have no effect on the value. They cannot be repeated,
+trail a number, or touch a decimal point, exponent marker, or exponent sign.
+For example, `1_000`, `0x_ff_ff`, and `1.2_5e1_0` are valid; `1__0`, `1_`,
+`1_.0`, and `1e_2` are not. Nonzero decimal integers cannot have leading zeros;
+`0_0` is valid but `0_1` is not. This syntax does not change string-conversion
+built-ins such as `int` and `float`.
+
+The existing Go implementation's literal range rules still apply: binary and
+octal integer literals must fit in a signed 64-bit integer, whereas decimal and
+hexadecimal literals support arbitrary-size integers.
 
 It is a static error if a floating-point literal denotes a value whose
 magnitude is too large to be represented as a finite `float` value.

@@ -7,6 +7,15 @@ load("assert.star", "assert")
 # - precision
 # - limits
 
+# numeric separators
+assert.eq(1_2.3_4, 12.34)
+assert.eq(.1_2, 0.12)
+assert.eq(1_2., 12.0)
+assert.eq(1_2.e+1_0, 12e10)
+assert.eq(1e-1_0, 1e-10)
+assert.eq(0_8.0, 8.0)
+assert.eq(0_8e0, 8.0)
+
 # type
 assert.eq(type(0.0), "float")
 
