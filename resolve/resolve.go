@@ -759,9 +759,11 @@ func (r *resolver) expr(e syntax.Expr) {
 
 	case *syntax.DictExpr:
 		for _, entry := range e.List {
-			entry := entry.(*syntax.DictEntry)
-			r.expr(entry.Key)
-			r.expr(entry.Value)
+			if unpack, ok := entry.(*syntax.UnaryExpr); ok && unpack.Op == syntax.STARSTAR {
+				r.expr(unpack.X)
+			} else {
+				r.expr(entry)
+			}
 		}
 
 	case *syntax.UnaryExpr:

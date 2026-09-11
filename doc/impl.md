@@ -128,6 +128,14 @@ iterator that is released after expansion, including before a later entry
 fails. A tuple display transfers the completed temporary list's backing storage
 to a tuple. The temporary list has not escaped, so no mutable alias remains.
 
+Dictionary displays hold explicit key/value nodes and unary double-star nodes.
+The compiler creates one dictionary and processes entries in written order.
+Each unpacked mapping supplies keys through an active iterator and values
+through lookup. The iterator is released on completion or on lookup, hashing,
+or duplicate-key errors. Explicit and unpacked entries use the same insertion
+check: if inserting an entry does not increase the dictionary's size, its key
+is a duplicate and evaluation fails. The incomplete dictionary has not escaped.
+
 ## Evaluator
 
 ### Data types

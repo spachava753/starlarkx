@@ -407,7 +407,7 @@ func (x *IfClause) Span() (start, end Position) {
 type DictExpr struct {
 	commentsRef
 	Lbrace Position
-	List   []Expr // all *DictEntrys
+	List   []Expr // *DictEntry or *UnaryExpr with Op STARSTAR
 	Rbrace Position
 }
 

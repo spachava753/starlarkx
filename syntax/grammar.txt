@@ -82,10 +82,10 @@ DisplayEntry = Test | '*' Test .
 ListComp = '[' Test {CompClause} ']'.
 
 DictExpr = '{' [Entries [',']] '}' .
-DictComp = '{' Entry {CompClause} '}' .
+DictComp = '{' Test ':' Test {CompClause} '}' .
 SetComp  = '{' Test 'for' LoopVariables 'in' Test {CompClause} '}' .
 Entries  = Entry {',' Entry} .
-Entry    = Test ':' Test .
+Entry    = Test ':' Test | '**' Test .
 
 CompClause = 'for' LoopVariables 'in' Test | 'if' Test .
 

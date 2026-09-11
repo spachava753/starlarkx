@@ -1799,15 +1799,14 @@ expression as the operand of a list comprehension:
 
 ### Dictionary expressions
 
-A dictionary expression is a comma-separated list of colon-separated
-key/value expression pairs, enclosed in curly brackets, and it yields
-a new dictionary object.
-An optional comma may follow the final pair.
+A dictionary expression is a comma-separated list of key/value pairs and
+`**mapping` entries, enclosed in curly brackets. It yields a new dictionary.
+An optional comma may follow the final entry.
 
 ```grammar {.good}
 DictExpr = '{' [Entries [',']] '}' .
 Entries  = Entry {',' Entry} .
-Entry    = Test ':' Test .
+Entry    = Test ':' Test | '**' Test .
 ```
 
 Examples:
@@ -1819,8 +1818,23 @@ Examples:
 {"one": 1, "two": 2,}
 ```
 
-The key and value expressions are evaluated in left-to-right order.
-Evaluation fails if the same key is used multiple times.
+Entries are evaluated and inserted from left to right. An explicit entry
+evaluates its key before its value. A `**mapping` entry accepts a dictionary
+or a host value implementing the iterable mapping interface. It reads the
+mapping's keys in iteration order and looks up each value before inserting it.
+It finishes and releases the mapping iterator before the next entry runs.
+Lists of pairs are not mappings.
+
+```python
+{0: "zero", **{1: "one"}, **{2: "two"}}  # {0: "zero", 1: "one", 2: "two"}
+{**{"a": 1}, "a": 2}                    # error: duplicate key
+```
+
+Duplicate keys are errors across all explicit entries and unpackings, using
+ordinary equality and hashing. A duplicate, invalid mapping, failed lookup,
+or unhashable key stops evaluation before later entries run. The source
+mappings are unchanged. The new dictionary shares its keys and values with
+the inputs; it does not copy the values themselves.
 
 Only [hashable](#hashing) values may be used as dictionary keys. Core hashable
 types are `NoneType`, `bool`, `int`, `float`, `string`, `bytes`, functions, and
@@ -2336,7 +2350,7 @@ A sequence of `for` and `if` clauses acts like a nested sequence of
 
 ```grammar {.good}
 ListComp = '[' Test {CompClause} ']'.
-DictComp = '{' Entry {CompClause} '}' .
+DictComp = '{' Test ':' Test {CompClause} '}' .
 SetComp  = '{' Test 'for' LoopVariables 'in' Test {CompClause} '}' .
 
 CompClause = 'for' LoopVariables 'in' Test

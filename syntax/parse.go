@@ -1001,17 +1001,19 @@ func (p *parser) parseDict() Expr {
 		return &DictExpr{Lbrace: lbrace, Rbrace: rbrace}
 	}
 
-	key := p.parseTest()
-	if p.tok == FOR {
-		// set comprehension; set literals remain unsupported.
-		return p.parseComprehensionSuffix(lbrace, key, RBRACE)
-	}
-	colon := p.consume(COLON)
-	x := &DictEntry{Key: key, Colon: colon, Value: p.parseTest()}
-
-	if p.tok == FOR {
-		// dict comprehension
-		return p.parseComprehensionSuffix(lbrace, x, RBRACE)
+	var x Expr
+	if p.tok == STARSTAR {
+		x = p.parseDictEntry()
+	} else {
+		key := p.parseTest()
+		if p.tok == FOR {
+			return p.parseComprehensionSuffix(lbrace, key, RBRACE)
+		}
+		colon := p.consume(COLON)
+		x = &DictEntry{Key: key, Colon: colon, Value: p.parseTest()}
+		if p.tok == FOR {
+			return p.parseComprehensionSuffix(lbrace, x, RBRACE)
+		}
 	}
 
 	entries := []Expr{x}
@@ -1028,7 +1030,11 @@ func (p *parser) parseDict() Expr {
 }
 
 // dict_entry = test ':' test
-func (p *parser) parseDictEntry() *DictEntry {
+func (p *parser) parseDictEntry() Expr {
+	if p.tok == STARSTAR {
+		pos := p.nextToken()
+		return &UnaryExpr{OpPos: pos, Op: STARSTAR, X: p.parseTest()}
+	}
 	k := p.parseTest()
 	colon := p.consume(COLON)
 	v := p.parseTest()

@@ -407,6 +407,13 @@ loop:
 			iterstack[n].Done()
 			iterstack = iterstack[:n]
 
+		case compile.DICTMERGE:
+			err = mergeDictDisplay(stack[sp-2].(*Dict), stack[sp-1])
+			sp -= 2
+			if err != nil {
+				break loop
+			}
+
 		case compile.EXTEND:
 			list := stack[sp-2].(*List)
 			iterable, ok := stack[sp-1].(Iterable)
@@ -503,13 +510,12 @@ loop:
 			k := stack[sp-2]
 			v := stack[sp-1]
 			sp -= 3
-			oldlen := dict.Len()
-			if err2 := dict.SetKey(k, v); err2 != nil {
-				err = err2
-				break loop
+			if op == compile.SETDICTUNIQ {
+				err = setDictUnique(dict, k, v)
+			} else {
+				err = dict.SetKey(k, v)
 			}
-			if op == compile.SETDICTUNIQ && dict.Len() == oldlen {
-				err = fmt.Errorf("duplicate key: %v", k)
+			if err != nil {
 				break loop
 			}
 
