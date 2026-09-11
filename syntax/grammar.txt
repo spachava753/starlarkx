@@ -64,7 +64,7 @@ Operand = identifier
         | ('-' | '+') PrimaryExpr
         .
 
-DotSuffix   = '.' identifier .
+DotSuffix   = '.' (identifier | 'load') .
 CallSuffix  = '(' [Arguments [',']] ')' .
 SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
 

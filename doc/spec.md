@@ -105,7 +105,7 @@ characters are tokens:
 ```
 
 *Keywords*: The following tokens are keywords and may not be used as
-identifiers:
+identifiers, except that `load` may name an attribute immediately after a dot:
 
 ```text
 and            elif           in             or
@@ -1680,7 +1680,7 @@ Operand = identifier
         | ('-' | '+') PrimaryExpr
         .
 
-DotSuffix   = '.' identifier .
+DotSuffix   = '.' (identifier | 'load') .
 CallSuffix  = '(' [Arguments [',']] ')' .
 SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
 ```
@@ -2377,7 +2377,7 @@ Methods belong to the built-in types `string`, `bytes`, `list`, `dict`, and
 `set`, and to many application-defined types.
 
 ```grammar {.good}
-DotSuffix = '.' identifier .
+DotSuffix = '.' (identifier | 'load') .
 ```
 
 A dot expression fails if the value does not have an attribute of the

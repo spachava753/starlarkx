@@ -128,7 +128,7 @@ before resolving any of them.
 | Syntax / Trailing commas | `OPEN` | - | - | - | - |
 | Syntax / Assignment | `OPEN` | - | - | - | - |
 | Syntax / List slice assignment | `OPEN` | - | - | - | - |
-| Syntax / `load` in attribute position | `OPEN` | - | - | - | - |
+| Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Accept `load` after a dot for attribute reads, calls, and assignments using ordinary host attribute protocols. Keep it reserved everywhere else, preserve the existing `load` statement, and continue rejecting other keywords as attribute names. | Allow Python-style APIs such as `json.load` without changing static module loading or broadly relaxing keyword rules. |
 | Syntax / Display unpacking | `OPEN` | - | - | - | - |
 | Syntax / Comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `NO` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
@@ -295,7 +295,7 @@ construct but intentionally or currently accepts less syntax.
 | Trailing commas | A trailing comma is rejected in unparenthesized tuple expressions and loop/comprehension targets where Python accepts it. It is accepted in calls and bracketed displays. |
 | Assignment | There is no chained assignment (`a = b = 0`) or starred target (`a, *rest = xs`). Compound targets must match the source sequence exactly. |
 | List slice assignment | Reading slices is supported, but assigning to a slice (`xs[1:3] = ys`) is rejected. Python lists support contiguous replacement with resizing and extended-slice replacement with matching lengths. |
-| `load` in attribute position | `load` is a hard keyword, so `obj.load` is rejected even when the host exposes that attribute. Python permits `obj.load` because `load` is not a Python keyword. |
+| `load` in attribute position | `obj.load` is accepted for attribute reads, calls, and assignments; `load` remains reserved elsewhere. Python treats `load` as an ordinary identifier everywhere. Both reject hard keywords such as `class` after a dot. |
 | Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
 | Comprehensions | Only eager list and dictionary comprehensions exist. There are no set comprehensions, generator expressions, or async comprehensions. |
 | Loop clauses | `for` and `while` have no `else` clause. |

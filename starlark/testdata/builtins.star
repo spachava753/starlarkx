@@ -327,6 +327,15 @@ assert.eq(dir({})[:3], ["clear", "copy", "get"]) # etc
 assert.eq(dir(1), [])
 assert.eq(dir([])[:3], ["append", "clear", "copy"]) # etc
 
+# load is permitted after a dot, including assignment and calls.
+load_holder = hasfields()
+load_holder.load = lambda x: x + 1
+assert.eq(load_holder.load(4), 5)
+assert.eq(getattr(load_holder, "load")(4), 5)
+load_holder.load = 2
+load_holder.load += 3
+assert.eq(load_holder.load, 5)
+
 # hasattr, getattr, dir
 # hasfields is an application-defined type defined in eval_test.go.
 hf = hasfields()

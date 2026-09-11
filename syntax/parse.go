@@ -732,6 +732,10 @@ func (p *parser) parsePrimaryWithSuffix() Expr {
 		switch p.tok {
 		case DOT:
 			dot := p.nextToken()
+			// Only after a dot, load names an attribute rather than a statement.
+			if p.tok == LOAD {
+				p.tok = IDENT
+			}
 			id := p.parseIdent()
 			x = &DotExpr{Dot: dot, X: x, Name: id}
 		case LBRACK:
