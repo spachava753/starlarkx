@@ -3344,6 +3344,26 @@ fail("oops")				# "fail: oops"
 fail("oops", 1, False, sep='/')		# "fail: oops/1/False"
 ```
 
+### filter
+
+`filter(function, iterable, /)` returns a new list of the input items whose
+`function(item)` result is truthy. With `function=None`, it tests each item
+itself. Both arguments are positional-only. The function must be callable or
+`None`, even when the input is empty.
+
+Items are tested in input order, and all calls finish before `filter` returns.
+The list retains the original items, rather than the function results.
+
+```python
+filter(None, [0, 1, "", "hello"])       # [1, "hello"]
+filter(lambda x: x % 2, range(6))       # [1, 3, 5]
+```
+
+The input must be iterable; strings require an explicit iterable view.
+The input iterator stays active during callbacks, so callbacks cannot mutate
+an iterated collection. Callback errors stop evaluation. The iterator is
+released on success or failure.
+
 ### float
 
 `float(x)` interprets its argument as a floating-point number.

@@ -197,7 +197,7 @@ features that need separate decisions.
 | Builtins / `delattr` | `STARLARK` | `DEFAULT` | `YES` | Keep attribute deletion by name unsupported, as already decided for `del obj.attribute`. | Do not add a second way to perform an operation the language deliberately leaves out. |
 | Builtins / `eval` | `OPEN` | - | - | - | - |
 | Builtins / `exec` | `OPEN` | - | - | - | - |
-| Builtins / `filter` | `STARLARKX` | `DEFAULT` | `NO` | Provide `filter(function, iterable, /)` and return a new list immediately. Accept a callable or `None`. Keep each original item whose function result is truthy; with `None`, test the item itself. Preserve input order and use StarlarkX truth, iteration, and mutation rules. Callback errors stop evaluation. | Add a convenient way to select items without introducing lazy execution or single-use results. |
+| Builtins / `filter` | `STARLARKX` | `DEFAULT` | `YES` | Provide `filter(function, iterable, /)` and return a new list immediately. Accept a callable or `None`. Keep each original item whose function result is truthy; with `None`, test the item itself. Preserve input order and use StarlarkX truth, iteration, and mutation rules. Callback errors stop evaluation. | Add a convenient way to select items without introducing lazy execution or single-use results. |
 | Builtins / `frozenset` | `OPEN` | - | - | - | - |
 | Builtins / `globals` | `OPEN` | - | - | - | - |
 | Builtins / `help` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's interactive help system unsupported in the core. Hosts may provide their own documentation tools. | Console interaction and Python's documentation and module lookup do not belong in the core. |
@@ -331,6 +331,7 @@ after loading, and easier to check before running.
 | `print` | Converts each object with `str`, joins with keyword-only `sep`, and appends keyword-only `end`; either formatting option accepts `None` for its default. The complete text is delivered to the host's thread callback, and `file` and `flush` are not supported. | Uses the same textual formatting options, additionally supports `file` and `flush`, and defaults to standard output. | Restriction / divergence |
 | Text percent formatting | Supports mapping keys, `#0- +` flags, fixed or `*` width and precision, ignored `h`/`l`/`L` modifiers, and `%diouxXeEfFgGcrsa` conversions with Python argument-consumption rules. Conversion protocols are limited to Starlark's available values, and bytes values do not act as format strings. | Supports the same text-string grammar and conversion behavior, plus user-defined numeric/string protocols; `bytes` has a related binary formatting operation. | Aligned for available text values / restriction |
 | Brace formatting (`str.format`, `str.format_map`, `format`) | Supports attribute and item field traversal, `!s`/`!r`/`!a`, one-level nested fields, and the standard format specification for strings, integers, floats, and booleans. The `n` presentation is locale-neutral, and other values accept only an empty specification. | Supports the same syntax through all three interfaces, with locale-aware `n`, complex numbers, and user-defined `__format__` protocols. | Aligned for available value types / restriction |
+| `filter` | `filter(function, iterable, /)` returns a new list eagerly, keeping original items whose callback result is truthy. `None` tests the items themselves. Uses StarlarkX iteration, truth, and mutation rules. | Returns a lazy iterator with the same selection rule over Python values. | Eager result / value-model divergence |
 | Float parsing protocols | `float` accepts only bool, int, float, or string and errors on overflow. | Also participates in Python's object conversion protocols and accepts infinity-producing overflow strings. | Restriction / divergence |
 | Extensibility | Only Go-defined values can add fields, methods, call behavior, truth, hashing, comparison, iteration, and operators. | Python code can implement these through classes and special methods. | Omission at language level |
 
@@ -423,14 +424,14 @@ StarlarkX currently provides these built-in names:
 ```text
 None True False
 abs all any ascii bin bool bytes callable chr dict dir divmod enumerate fail
-float format getattr hasattr hash hex int len list max min oct ord pow print range
+float filter format getattr hasattr hash hex int len list max min oct ord pow print range
 repr reversed round set sorted str sum tuple type zip
 ```
 
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
 predeclared names before evaluation.
 
-The following 32 functions and types from Python 3.14's
+The following 31 functions and types from Python 3.14's
 [Built-in Functions reference](https://docs.python.org/3.14/library/functions.html)
 are missing. Each has its own row in the decision register. This list does not
 include exception classes, constants, or the extra interactive helpers installed
@@ -455,7 +456,6 @@ expose its own APIs.
 | `delattr` | Deletes an attribute by name. | Unsupported, matching the decision against attribute deletion. |
 | `eval` | Evaluates an expression supplied as text or a code object. | Needs a decision on runtime code evaluation and access to names. Host-free does not make evaluating untrusted text safe. |
 | `exec` | Executes statements supplied as text or a code object. | Needs a decision on runtime code execution and scope. It is not automatically approved just because it can run without I/O. |
-| `filter` | Returns an iterator over values that pass a test. | Planned: return a list immediately, using StarlarkX truth tests. `None` keeps truthy items. Not implemented. |
 | `frozenset` | Creates an immutable, hashable set. | Needs an immutable set type; a frozen StarlarkX set is still unhashable. |
 | `globals` | Returns the current module's global namespace as a dictionary. | Decide whether and how programs may inspect or change globals. |
 | `help` | Shows documentation or starts interactive help. | Unsupported; leave documentation tools and console interaction to the host. |

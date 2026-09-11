@@ -54,6 +54,7 @@ func init() {
 		"divmod":    NewBuiltin("divmod", divmod),
 		"enumerate": NewBuiltin("enumerate", enumerate),
 		"fail":      NewBuiltin("fail", fail),
+		"filter":    NewBuiltin("filter", filter),
 		"float":     NewBuiltin("float", float),
 		"format":    NewBuiltin("format", format_),
 		"getattr":   NewBuiltin("getattr", getattr),
@@ -206,6 +207,38 @@ func builtinAttrNames(methods map[string]*Builtin) []string {
 }
 
 // ---- built-in functions ----
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#filter
+func filter(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var function, iterable Value
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 2, &function, &iterable); err != nil {
+		return nil, err
+	}
+	if _, ok := function.(Callable); !ok && function != None {
+		return nil, fmt.Errorf("filter: got %s, want callable or None", function.Type())
+	}
+	iter := Iterate(iterable)
+	if iter == nil {
+		return nil, fmt.Errorf("filter: got %s, want iterable", iterable.Type())
+	}
+	defer iter.Done()
+	var result []Value
+	var item Value
+	for iter.Next(&item) {
+		test := item
+		if function != None {
+			var err error
+			test, err = Call(thread, function, Tuple{item}, nil)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if test.Truth() {
+			result = append(result, item)
+		}
+	}
+	return NewList(result), nil
+}
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#abs
 func abs(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
