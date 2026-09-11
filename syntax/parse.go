@@ -951,6 +951,7 @@ func (p *parser) parseList() Expr {
 //
 //	| '{' dict_entry_list '}'
 //	| '{' dict_entry FOR loop_variables IN expr '}'
+//	| '{' test FOR loop_variables IN expr '}'
 func (p *parser) parseDict() Expr {
 	lbrace := p.nextToken()
 	if p.tok == RBRACE {
@@ -959,7 +960,13 @@ func (p *parser) parseDict() Expr {
 		return &DictExpr{Lbrace: lbrace, Rbrace: rbrace}
 	}
 
-	x := p.parseDictEntry()
+	key := p.parseTest()
+	if p.tok == FOR {
+		// set comprehension; set literals remain unsupported.
+		return p.parseComprehensionSuffix(lbrace, key, RBRACE)
+	}
+	colon := p.consume(COLON)
+	x := &DictEntry{Key: key, Colon: colon, Value: p.parseTest()}
 
 	if p.tok == FOR {
 		// dict comprehension

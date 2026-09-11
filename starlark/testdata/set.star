@@ -1,11 +1,9 @@
 # Tests of Starlark 'set'
 # option:set option:globalreassign
 
-# Sets are not a standard part of Starlark, so the features
-# tested in this file must be enabled in the application by setting
-# resolve.AllowSet.  (All sets are created by calls to the 'set'
-# built-in or derived from operations on existing sets.)
-# The semantics are subject to change as the spec evolves.
+# Sets are enabled by the Set file option (or legacy resolve.AllowSet).
+# They can be built by the 'set' built-in, set comprehensions, and operations
+# on existing sets.
 
 # TODO(adonovan): support set mutation:
 # - del set[k]
@@ -19,8 +17,62 @@ load("assert.star", "assert", "freeze")
 # TODO(adonovan): add test to syntax/testdata/errors.star.
 
 # set comprehensions
-# Parser does not currently support {x for x in y}.
-# See syntax/testdata/errors.star.
+assert.eq(type({x for x in []}), "set")
+assert.eq(list({x for x in []}), [])
+assert.eq(list({x for x in [3, 1, 3, 2]}), [3, 1, 2])
+assert.eq(list({x * x for x in range(6) if x % 2 == 0}), [0, 4, 16])
+assert.eq(list({(i, j) for i in range(4) for j in range(i)}),
+          [(1, 0), (2, 0), (2, 1), (3, 0), (3, 1), (3, 2)])
+assert.eq(list({j * k for i in range(4) for j, k in [(i+1, i+2)]}), [2, 6, 12, 20])
+assert.eq(list({None for x in range(3)}), [None])
+assert.eq(list({x for x in [True, 1, 1.0]}), [True, 1])
+assert.eq(len({x for x in [float("nan"), float("nan")]}), 1)
+assert.eq({c for c in "abca".elems()}, set(["a", "b", "c"]))
+assert.fails(lambda: {x for x in "abc"}, "not iterable")
+assert.fails(lambda: {x for x in 1}, "not iterable")
+assert.fails(lambda: {x for x in [[]]}, "unhashable type: list")
+assert.fails(lambda: {x for x in [{}]}, "unhashable type: dict")
+assert.fails(lambda: {{y for y in [x]} for x in [1]}, "unhashable type: set")
+assert.eq({1 // 0 for x in []}, set())
+assert.eq({1 // 0 for x in [1] if False}, set())
+
+# Comprehension locals don't leak, and the first iterable uses outer bindings.
+outer = [3, 1, 3]
+assert.eq(list({outer for outer in outer}), [3, 1])
+assert.eq(outer, [3, 1, 3])
+assert.eq([{y for y in range(x)} for x in range(3)], [set(), set([0]), set([0, 1])])
+assert.eq(list({sum({y for y in range(x)}) for x in range(4)}), [0, 1, 3])
+closures = {lambda: x for x in range(3)}
+assert.eq({f() for f in closures}, set([2]))
+assert.eq({f() for f in {lambda x=x: x for x in range(3)}}, set([0, 1, 2]))
+
+# Direct construction does not call a shadowed set constructor.
+def shadowed_set():
+    set = lambda _: fail("must not be called")
+    return {x for x in [1, 2, 1]}
+assert.eq(list(shadowed_set()), [1, 2])
+
+calls = []
+def observe(x):
+    calls.append(x)
+    return x
+assert.eq(list({observe(x) for x in observe([1, 1, 2]) if observe(x > 0)}), [1, 2])
+assert.eq(calls, [[1, 1, 2], True, 1, True, 1, True, 2])
+
+# Hash failure stops construction immediately and releases source iterators.
+calls.clear()
+source = [[], 2]
+assert.fails(lambda: {observe(x) for x in source}, "unhashable type: list")
+assert.eq(calls, [[]])
+source.append(3)
+assert.eq(source, [[], 2, 3])
+mutable_comp = {x for x in range(3)}
+mutable_comp.add(3)
+assert.eq(list(mutable_comp), [0, 1, 2, 3])
+assert.fails(lambda: {mutable_comp.add(4) for x in mutable_comp}, "during iteration")
+mutable_comp.add(4)
+freeze(mutable_comp)
+assert.fails(lambda: mutable_comp.add(5), "frozen")
 
 # set constructor
 assert.eq(type(set()), "set")

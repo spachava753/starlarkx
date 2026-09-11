@@ -463,6 +463,18 @@ loop:
 				break loop
 			}
 
+		case compile.MAKESET:
+			stack[sp] = new(Set)
+			sp++
+
+		case compile.SETADD:
+			set := stack[sp-2].(*Set)
+			elem := stack[sp-1]
+			sp -= 2
+			if err = set.Insert(elem); err != nil {
+				break loop
+			}
+
 		case compile.MAKEDICT:
 			stack[sp] = new(Dict)
 			sp++

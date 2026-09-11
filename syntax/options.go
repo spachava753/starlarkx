@@ -22,7 +22,7 @@ import _ "unsafe" // for linkname
 // [github.com/spachava753/starlarkx/starlark.ExecFileOptions].
 type FileOptions struct {
 	// resolver
-	Set               bool // allow references to the 'set' built-in function
+	Set               bool // allow references to the 'set' built-in and set comprehensions
 	While             bool // allow 'while' statements
 	TopLevelControl   bool // allow if/for/while statements at top-level
 	GlobalReassign    bool // allow reassignment to top-level names

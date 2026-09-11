@@ -925,8 +925,9 @@ symmetric difference, and difference when both operands are sets. The binary
 Methods such as `union` accept any iterable where documented.
 
 Sets are instantiated by calling the built-in `set` function, which
-returns a set containing all the elements of its optional argument,
-which must be an iterable sequence.  Sets have no literal syntax.
+returns a set containing all the elements of its optional iterable argument,
+or by a [set comprehension](#comprehensions). Set literals such as `{1, 2}`
+remain unsupported; `{}` creates a dictionary.
 
 A set has these methods:
 
@@ -953,7 +954,8 @@ A set used in a Boolean context is considered true if it is non-empty.
 <b>Implementation note:</b>
 The `set` value is implemented and present in the universal environment used by
 the legacy API and command. A caller using explicit [`FileOptions`](../syntax/options.go)
-must set `Set: true`; the zero value rejects references to `set`. The command's
+must set `Set: true`; the zero value rejects references to the universal `set`
+built-in and rejects set comprehensions, even if `set` is shadowed. The command's
 `-set` flag is obsolete and has no effect.
 
 
@@ -1675,7 +1677,7 @@ PrimaryExpr = Operand
 Operand = identifier
         | int | float | string | bytes
         | ListExpr | ListComp
-        | DictExpr | DictComp
+        | DictExpr | DictComp | SetComp
         | '(' [Expression] [,] ')'
         | ('-' | '+') PrimaryExpr
         .
@@ -2251,7 +2253,7 @@ Example:
 
 ### Comprehensions
 
-A comprehension constructs new list or dictionary value by looping
+A comprehension constructs a new list, dictionary, or set value by looping
 over one or more iterables and evaluating a _body_ expression that produces
 successive elements of the result.
 
@@ -2268,6 +2270,7 @@ A sequence of `for` and `if` clauses acts like a nested sequence of
 ```grammar {.good}
 ListComp = '[' Test {CompClause} ']'.
 DictComp = '{' Entry {CompClause} '}' .
+SetComp  = '{' Test 'for' LoopVariables 'in' Test {CompClause} '}' .
 
 CompClause = 'for' LoopVariables 'in' Test
            | 'if' Test .
@@ -2291,6 +2294,31 @@ pair of expressions, `key: value`, separated by a colon,
 and its result is a dictionary containing the key/value pairs
 for which the body expression was evaluated.
 Evaluation fails if the value of any key is unhashable.
+
+A set comprehension uses braces around a single element expression followed by
+one or more `for` and optional `if` clauses: `{element for target in iterable}`.
+It requires `FileOptions.Set`, just like references to the universal `set`
+built-in. The loop and filter rules, lexical scope, and iteration restrictions
+are the same as for list and dictionary comprehensions.
+
+Set comprehensions are eager and construct a new mutable set directly, without
+an intermediate list or a call to the name `set`. Shadowing or replacing that
+name does not affect them. The element expression is evaluated once for every
+combination that passes the filters, including combinations producing duplicate
+values. Each result is inserted immediately using StarlarkX hashing and equality;
+an unhashable result aborts evaluation. Duplicates do not move the first inserted
+representative, so iteration order follows first insertion. Booleans remain
+distinct from numbers and equal NaN values collapse to one element.
+
+```python
+{x * x for x in range(5)}        # set([0, 1, 4, 9, 16])
+{x for x in [3, 1, 3, 2]}        # set([3, 1, 2])
+{x for x in []}                  # set([]), not a dictionary
+```
+
+The resulting set follows the usual mutation and module-freezing rules.
+Generator expressions, async comprehensions, and set literals such as `{1, 2}`
+remain unsupported. Empty braces `{}` still construct a dictionary.
 
 As with a `for` loop, the loop variables may exploit compound
 assignment:

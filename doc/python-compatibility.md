@@ -131,7 +131,7 @@ before resolving any of them.
 | Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Accept `load` after a dot for attribute reads, calls, and assignments using ordinary host attribute protocols. Keep it reserved everywhere else, preserve the existing `load` statement, and continue rejecting other keywords as attribute names. | Allow Python-style APIs such as `json.load` without changing static module loading or broadly relaxing keyword rules. |
 | Syntax / Display unpacking | `OPEN` | - | - | - | - |
 | Syntax / List and dictionary comprehensions | `OPEN` | - | - | - | - |
-| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `NO` | Support eager `{element for target in iterable if condition ...}` with nested loops and filters, comprehension-local bindings, and direct set construction when `FileOptions.Set` is enabled. Use StarlarkX iterability, equality, hashing, insertion order, and mutation safety; preserve set-literal and generator omissions. | Add Python's concise set-building syntax without allocating an intermediate list or changing the existing value model. |
+| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Support eager `{element for target in iterable if condition ...}` with nested loops and filters, comprehension-local bindings, and direct set construction when `FileOptions.Set` is enabled. Use StarlarkX iterability, equality, hashing, insertion order, and mutation safety; preserve set-literal and generator omissions. | Add Python's concise set-building syntax without allocating an intermediate list or changing the existing value model. |
 | Syntax / Generator expressions | `OPEN` | - | - | - | - |
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `NO` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
@@ -183,7 +183,7 @@ before resolving any of them.
 | Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
-| Dialect / `Set` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.Set`: an explicit zero-valued option set rejects references to the universal `set` built-in, while `Set: true` permits them; legacy APIs continue deriving the value from `resolve.AllowSet`, whose default is true. | Keep Go Starlark's host-selectable set extension and its established modern-versus-legacy defaults. |
+| Dialect / `Set` | `STARLARKX` | `OPTION` | `YES` | Preserve upstream gating of universal `set` references and additionally gate set comprehensions: an explicit zero-valued option set rejects both, while `Set: true` permits both. Legacy APIs continue deriving the value from `resolve.AllowSet`, whose default is true. Shadowing `set` does not bypass the comprehension gate. | Extend the existing host-selectable set capability to the new syntax without changing modern-versus-legacy defaults or universal-name resolution. |
 | Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep Go Starlark's bounded default and explicit opt-in for potentially unbounded loops. |
 | Dialect / `TopLevelControl` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.TopLevelControl`: false rejects top-level `if`, `for`, and `while`, while true permits them, subject to `While` for top-level `while`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep module initialization linear by default while retaining the upstream host-controlled extension. |
 | Dialect / `GlobalReassign` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.GlobalReassign`: false enforces one top-level binding per name, while true permits reassignment and retains the existing top-level binding-resolution behavior. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep static single-assignment as the default without changing the upstream compatibility option. |
@@ -204,7 +204,8 @@ The shared core is substantial:
   slicing with a stride.
 - Comparison chains evaluate adjacent pairs from left to right, evaluate each
   operand at most once, and skip later operands after the first false result.
-- List and dictionary comprehensions with nested `for` and `if` clauses.
+- List, dictionary, and set comprehensions with nested `for` and `if` clauses
+  (set comprehensions require the `Set` option).
 - `def`, `lambda`, nested functions, default arguments, variadic positional and
   keyword arguments, keyword-only parameters, `return`, `if`/`elif`/`else`,
   `for`, `while`, `break`, `continue`, and `pass`. Some are restricted or
@@ -301,7 +302,7 @@ construct but intentionally or currently accepts less syntax.
 | `load` in attribute position | `obj.load` is accepted for attribute reads, calls, and assignments; `load` remains reserved elsewhere. Python treats `load` as an ordinary identifier everywhere. Both reject hard keywords such as `class` after a dot. |
 | Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
 | List and dictionary comprehensions | Eager list and dictionary comprehensions support nested `for` and `if` clauses. Their values and iteration follow StarlarkX rules. |
-| Set comprehensions | `{x for x in iterable}` is not supported. Python builds a set eagerly without an intermediate list. |
+| Set comprehensions | With `Set` enabled, `{x for x in iterable}` builds a set eagerly using StarlarkX scope, iteration, equality, hashing, insertion order, and mutation rules. No intermediate list or call to the `set` name is made. Python provides the same eager syntax but uses its own set and value semantics. |
 | Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
 | Loop clauses | `for` and `while` have no `else` clause. |
@@ -413,7 +414,7 @@ Modern callers choose syntax and resolver behavior through
 
 | Option | Effect when true | Python compatibility effect |
 | --- | --- | --- |
-| `Set` | Allows references to the universal `set` built-in. | Enables a partial Python set type. |
+| `Set` | Allows references to the universal `set` built-in and eager set comprehensions. | Enables StarlarkX sets and Python-style set comprehension syntax. |
 | `While` | Allows `while` statements. | Closer to Python. |
 | `TopLevelControl` | Allows top-level `if`, `for`, and `while`. | Closer to Python. |
 | `GlobalReassign` | Allows rebinding top-level names. In legacy resolution it also changes how references around top-level redefinitions bind. | Closer to Python, though the legacy API couples it to other controls. |
@@ -459,11 +460,11 @@ A practical extension plan can group work by architectural depth:
    evaluation order. These changes are localized conceptually but can
    break Starlark code.
 2. **Extend parser and evaluator**: literal concatenation, numeric separators,
-   richer unpacking, slice assignment, loop `else`, f-strings, and additional
-   comprehension forms.
-3. **Add new runtime subsystems**: exceptions, generators/iterators, classes
-   and Python's object protocol, imports/module objects, context managers,
-   async execution, and broad standard-library compatibility. These are not
+   richer unpacking, augmented slice assignment, loop `else`, and f-strings.
+3. **Add new runtime subsystems**: exceptions, generators/iterators and generator
+   expressions, classes and Python's object protocol, imports/module objects,
+   context managers, async execution and comprehensions, and broad
+   standard-library compatibility. These are not
    incremental syntax additions; they alter the evaluator and value model.
 
 A compatibility mode is safer than changing all defaults globally. Several

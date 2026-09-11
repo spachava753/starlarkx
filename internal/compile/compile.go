@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 16
+const Version = 17
 
 type Opcode uint8
 
@@ -113,6 +113,8 @@ const (
 	INPLACE_ADD  //            x y INPLACE_ADD  z      where z is x+y or x.extend(y)
 	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
 	MAKEDICT     //              - MAKEDICT     dict
+	MAKESET      //              - MAKESET      set
+	SETADD       //       set elem SETADD       -
 
 	// --- opcodes with an argument must go below this line ---
 
@@ -189,6 +191,8 @@ var opcodeNames = [...]string{
 	LOCALCELL:    "localcell",
 	LT:           "lt",
 	LTLT:         "ltlt",
+	MAKESET:      "makeset",
+	SETADD:       "setadd",
 	MAKEDICT:     "makedict",
 	MAKEFUNC:     "makefunc",
 	MAKELIST:     "makelist",
@@ -264,6 +268,8 @@ var stackEffect = [...]int8{
 	LOCALCELL:    +1,
 	LT:           -1,
 	LTLT:         -1,
+	MAKESET:      +1,
+	SETADD:       -2,
 	MAKEDICT:     +1,
 	MAKEFUNC:     0,
 	MAKELIST:     variableStackEffect,
@@ -1373,8 +1379,10 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		fcomp.emit(SLICE)
 
 	case *syntax.Comprehension:
-		if e.Curly {
+		if _, dict := e.Body.(*syntax.DictEntry); e.Curly && dict {
 			fcomp.emit(MAKEDICT)
+		} else if e.Curly {
+			fcomp.emit(MAKESET)
 		} else {
 			fcomp.emit1(MAKELIST, 0)
 		}
@@ -1808,16 +1816,16 @@ func (fcomp *fcomp) tuple(elems []syntax.Expr) {
 func (fcomp *fcomp) comprehension(comp *syntax.Comprehension, clauseIndex int) {
 	if clauseIndex == len(comp.Clauses) {
 		fcomp.emit(DUP) // accumulator
-		if comp.Curly {
+		if entry, dict := comp.Body.(*syntax.DictEntry); comp.Curly && dict {
 			// dict: {k:v for ...}
-			// Parser ensures that body is of form k:v.
-			// Python-style set comprehensions {body for vars in x}
-			// are not supported.
-			entry := comp.Body.(*syntax.DictEntry)
 			fcomp.expr(entry.Key)
 			fcomp.expr(entry.Value)
 			fcomp.setPos(entry.Colon)
 			fcomp.emit(SETDICT)
+		} else if comp.Curly {
+			fcomp.expr(comp.Body)
+			fcomp.setPos(syntax.Start(comp.Body))
+			fcomp.emit(SETADD)
 		} else {
 			// list: [body for vars in x]
 			fcomp.expr(comp.Body)

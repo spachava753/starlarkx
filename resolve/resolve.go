@@ -690,12 +690,15 @@ func (r *resolver) expr(e syntax.Expr) {
 		}
 
 	case *syntax.Comprehension:
+		if _, dict := e.Body.(*syntax.DictEntry); e.Curly && !dict && !r.options.Set {
+			r.errorf(e.Lbrack, "set comprehensions require the Set option")
+		}
 		// The 'in' operand of the first clause (always a ForClause)
 		// is resolved in the outer block; consider: [x for x in x].
 		clause := e.Clauses[0].(*syntax.ForClause)
 		r.expr(clause.X)
 
-		// A list/dict comprehension defines a new lexical block.
+		// A comprehension defines a new lexical block.
 		// Locals defined within the block will be allotted
 		// distinct slots in the locals array of the innermost
 		// enclosing container (function/module) block.

@@ -307,8 +307,10 @@ func (x *DotExpr) Span() (start, end Position) {
 	return
 }
 
-// A Comprehension represents a list or dict comprehension:
-// [Body for ... if ...] or {Body for ... if ...}
+// A Comprehension represents a list, dict, or set comprehension:
+// [Body for ... if ...] or {Body for ... if ...}.
+// A dict comprehension has a *DictEntry body; a set comprehension has
+// Curly true and an ordinary expression body.
 type Comprehension struct {
 	commentsRef
 	Curly   bool // {x:y for ...} or {x for ...}, not [x for ...]
