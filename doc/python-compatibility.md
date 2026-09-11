@@ -130,7 +130,10 @@ before resolving any of them.
 | Syntax / List slice assignment | `STARLARKX` | `DEFAULT` | `YES` | Support plain list slice assignment with Python's clipped integer/None bounds, positive and negative strides, contiguous resizing, equal-length extended replacement, self-assignment, and RHS-before-target evaluation. Consume a StarlarkX iterable into a snapshot before replacing contents, preserve the list object, and reject frozen or actively iterated destinations. Lock the destination during host iteration. Reject booleans as bounds, non-iterable strings as replacements, non-list destinations, and augmented slice assignment. | Add familiar in-place list replacement while retaining StarlarkX iteration, mutation safety, and value protocols; leave augmented assignment and deletion syntax separate. |
 | Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Accept `load` after a dot for attribute reads, calls, and assignments using ordinary host attribute protocols. Keep it reserved everywhere else, preserve the existing `load` statement, and continue rejecting other keywords as attribute names. | Allow Python-style APIs such as `json.load` without changing static module loading or broadly relaxing keyword rules. |
 | Syntax / Display unpacking | `OPEN` | - | - | - | - |
-| Syntax / Comprehensions | `OPEN` | - | - | - | - |
+| Syntax / List and dictionary comprehensions | `OPEN` | - | - | - | - |
+| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `NO` | Support eager `{element for target in iterable if condition ...}` with nested loops and filters, comprehension-local bindings, and direct set construction when `FileOptions.Set` is enabled. Use StarlarkX iterability, equality, hashing, insertion order, and mutation safety; preserve set-literal and generator omissions. | Add Python's concise set-building syntax without allocating an intermediate list or changing the existing value model. |
+| Syntax / Generator expressions | `OPEN` | - | - | - | - |
+| Syntax / Async comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `NO` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
 | Syntax / Function parameters | `OPEN` | - | - | - | - |
 | Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Accept the Python 3.14 numeric literal forms covered by this area, including valid digit-separator placement and imaginary literals. | Improve Python source compatibility and preserve familiar readable forms for large numeric constants. |
@@ -151,7 +154,7 @@ before resolving any of them.
 | Statements / Type aliases and annotations | `OPEN` | - | - | - | - |
 | Expressions / Identity operators | `OPEN` | - | - | - | - |
 | Expressions / Assignment expressions | `OPEN` | - | - | - | - |
-| Expressions / Generator and set displays | `OPEN` | - | - | - | - |
+| Expressions / Set displays | `OPEN` | - | - | - | - |
 | Expressions / Iterable unpacking | `OPEN` | - | - | - | - |
 | Expressions / Complex numbers and `Ellipsis` | `OPEN` | - | - | - | - |
 | Expressions / Matrix multiplication | `OPEN` | - | - | - | - |
@@ -297,7 +300,10 @@ construct but intentionally or currently accepts less syntax.
 | List slice assignment | Plain list slice assignment supports contiguous resizing and equal-length extended replacement, preserving aliases and snapshotting StarlarkX iterables. Frozen or actively iterated lists, boolean bounds, scalar string replacements, non-list destinations, and augmented slice assignment are rejected. Python permits list mutation during iteration, boolean bounds, string iterables, and augmented slice assignment. |
 | `load` in attribute position | `obj.load` is accepted for attribute reads, calls, and assignments; `load` remains reserved elsewhere. Python treats `load` as an ordinary identifier everywhere. Both reject hard keywords such as `class` after a dot. |
 | Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
-| Comprehensions | Only eager list and dictionary comprehensions exist. There are no set comprehensions, generator expressions, or async comprehensions. |
+| List and dictionary comprehensions | Eager list and dictionary comprehensions support nested `for` and `if` clauses. Their values and iteration follow StarlarkX rules. |
+| Set comprehensions | `{x for x in iterable}` is not supported. Python builds a set eagerly without an intermediate list. |
+| Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
+| Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
 | Loop clauses | `for` and `while` have no `else` clause. |
 | Function parameters | No positional-only `/` marker, annotations, return annotations, type parameters, or decorators. |
 | Numeric literals | Numeric digit separators such as `1_000` are rejected. Complex and imaginary literals are absent. |
@@ -336,7 +342,8 @@ keywords `match`, `case`, and `type` are also ordinary identifiers here.
 
 - Identity operators `is` and `is not`.
 - Assignment expressions (`:=`).
-- Generator and set displays/comprehensions.
+- Set displays such as `{1, 2}`; `{}` is a dictionary. Set comprehensions and
+  generator expressions are tracked separately above.
 - General iterable unpacking in displays and assignment targets.
 - Complex numbers, `Ellipsis`, and complex literals.
 - The matrix multiplication operator `@`.
