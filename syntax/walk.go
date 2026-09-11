@@ -128,6 +128,11 @@ func Walk(n Node, f func(Node) bool) {
 			Walk(x, f)
 		}
 
+	case *SetExpr:
+		for _, element := range n.List {
+			Walk(element, f)
+		}
+
 	case *DictExpr:
 		for _, entry := range n.List {
 			Walk(entry, f)

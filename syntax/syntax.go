@@ -403,6 +403,19 @@ func (x *IfClause) Span() (start, end Position) {
 	return x.If, end
 }
 
+// A SetExpr represents a non-empty set display.
+type SetExpr struct {
+	commentsRef
+	Lbrace Position
+	List   []Expr
+	Rbrace Position
+}
+
+func (*SetExpr) expr() {}
+func (x *SetExpr) Span() (start, end Position) {
+	return x.Lbrace, x.Rbrace.add("}")
+}
+
 // A DictExpr represents a dictionary literal: { List }.
 type DictExpr struct {
 	commentsRef

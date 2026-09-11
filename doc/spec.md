@@ -961,8 +961,8 @@ Methods such as `union` accept any iterable where documented.
 
 Sets are instantiated by calling the built-in `set` function, which
 returns a set containing all the elements of its optional iterable argument,
-or by a [set comprehension](#comprehensions). Set literals such as `{1, 2}`
-remain unsupported; `{}` creates a dictionary.
+or by a [set comprehension](#comprehensions) or [set display](#set-expressions)
+such as `{1, 2}`. Empty braces `{}` create a dictionary.
 
 A set has these methods:
 
@@ -990,7 +990,8 @@ A set used in a Boolean context is considered true if it is non-empty.
 The `set` value is implemented and present in the universal environment used by
 the legacy API and command. A caller using explicit [`FileOptions`](../syntax/options.go)
 must set `Set: true`; the zero value rejects references to the universal `set`
-built-in and rejects set comprehensions, even if `set` is shadowed. The command's
+built-in, set comprehensions, and set displays. Shadowing the name `set` does
+not enable set syntax. The command's
 `-set` flag is obsolete and has no effect.
 
 
@@ -1715,7 +1716,7 @@ PrimaryExpr = Operand
 Operand = identifier
         | int | float | string | bytes | fstring
         | ListExpr | ListComp
-        | DictExpr | DictComp | SetComp
+        | DictExpr | DictComp | SetExpr | SetComp
         | '(' [DisplayEntries [',']] ')'
         | ('-' | '+') PrimaryExpr
         .
@@ -1841,6 +1842,31 @@ types are `NoneType`, `bool`, `int`, `float`, `string`, `bytes`, functions, and
 tuples whose elements are hashable. Lists, dictionaries, sets, ranges, and
 iterable views are not hashable.
 
+
+### Set expressions
+
+A set display encloses one or more comma-separated expressions in braces.
+It creates a new mutable set. An optional comma may follow the final element.
+Empty braces `{}` create a dictionary; use `set()` for an empty set.
+
+```grammar {.good}
+SetExpr = '{' Test {',' Test} [','] '}' .
+```
+
+```python
+{3, 1, 3, 2}        # set([3, 1, 2])
+{1,}                # set([1])
+```
+
+Elements are evaluated and inserted from left to right. Every expression runs,
+even if it produces a duplicate. Elements use ordinary equality and hashing;
+duplicates keep their first insertion position. An unhashable element is an
+error and stops evaluation before later entries run.
+
+Set displays require `FileOptions.Set`, with the same defaults as other
+[set features](#sets). Construction does not call the name `set`. Defining a
+local `set` name neither changes construction nor enables the syntax when the
+option is disabled.
 
 ### List expressions
 
@@ -2398,8 +2424,7 @@ distinct from numbers and equal NaN values collapse to one element.
 ```
 
 The resulting set follows the usual mutation and module-freezing rules.
-Generator expressions, async comprehensions, and set literals such as `{1, 2}`
-remain unsupported. Empty braces `{}` still construct a dictionary.
+See [set expressions](#set-expressions) for displays such as `{1, 2}`.
 
 As with a `for` loop, the loop variables may exploit compound
 assignment:

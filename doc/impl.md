@@ -136,6 +136,14 @@ or duplicate-key errors. Explicit and unpacked entries use the same insertion
 check: if inserting an entry does not increase the dictionary's size, its key
 is a duplicate and evaluation fails. The incomplete dictionary has not escaped.
 
+After an opening brace, empty braces select a dictionary. Otherwise a colon
+after the first expression selects a dictionary entry, and a `for` selects a
+comprehension. An ordinary comma or closing brace selects a set display. Set
+displays have their own syntax-tree node. The resolver checks the `Set` option
+on that node, independently of bindings named `set`. The compiler creates the
+set directly and inserts each evaluated element before evaluating the next.
+Insertion uses the same ordered hash table as other set operations.
+
 ## Evaluator
 
 ### Data types

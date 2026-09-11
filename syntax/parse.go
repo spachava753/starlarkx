@@ -1009,6 +1009,9 @@ func (p *parser) parseDict() Expr {
 		if p.tok == FOR {
 			return p.parseComprehensionSuffix(lbrace, key, RBRACE)
 		}
+		if p.tok != COLON {
+			return p.parseSetDisplay(lbrace, key)
+		}
 		colon := p.consume(COLON)
 		x = &DictEntry{Key: key, Colon: colon, Value: p.parseTest()}
 		if p.tok == FOR {
@@ -1029,7 +1032,19 @@ func (p *parser) parseDict() Expr {
 	return &DictExpr{Lbrace: lbrace, List: entries, Rbrace: rbrace}
 }
 
-// dict_entry = test ':' test
+func (p *parser) parseSetDisplay(lbrace Position, first Expr) Expr {
+	elements := []Expr{first}
+	for p.tok == COMMA {
+		p.nextToken()
+		if p.tok == RBRACE {
+			break
+		}
+		elements = append(elements, p.parseTest())
+	}
+	return &SetExpr{Lbrace: lbrace, List: elements, Rbrace: p.consume(RBRACE)}
+}
+
+// dict_entry = test ':' test | '**' test
 func (p *parser) parseDictEntry() Expr {
 	if p.tok == STARSTAR {
 		pos := p.nextToken()

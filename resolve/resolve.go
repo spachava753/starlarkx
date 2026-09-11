@@ -757,6 +757,14 @@ func (r *resolver) expr(e syntax.Expr) {
 			}
 		}
 
+	case *syntax.SetExpr:
+		if !r.options.Set {
+			r.errorf(e.Lbrace, "set displays require the Set option")
+		}
+		for _, element := range e.List {
+			r.expr(element)
+		}
+
 	case *syntax.DictExpr:
 		for _, entry := range e.List {
 			if unpack, ok := entry.(*syntax.UnaryExpr); ok && unpack.Op == syntax.STARSTAR {

@@ -171,7 +171,7 @@ features that need separate decisions.
 | Statements / Annotations | `STARLARK` | `DEFAULT` | `YES` | Keep variable, parameter, and return annotations unsupported. | Do not accept type declarations that the language neither checks nor otherwise uses. |
 | Expressions / Identity operators | `OPEN` | - | - | - | - |
 | Expressions / Assignment expressions | `STARLARK` | `DEFAULT` | `YES` | Keep `:=` unsupported; use assignment statements. | Keep binding a name separate from testing or computing a value. |
-| Expressions / Set displays | `STARLARKX` | `OPTION` | `NO` | Allow non-empty set displays such as `{1, 2}` when `FileOptions.Set` is enabled, without calling the `set` name. Evaluate elements from left to right and use StarlarkX equality, hashing, and insertion order. Keep `{}` as an empty dictionary; starred entries are tracked separately. | Make sets easier to write while keeping `{}` unambiguous. |
+| Expressions / Set displays | `STARLARKX` | `OPTION` | `YES` | Allow non-empty set displays such as `{1, 2}` when `FileOptions.Set` is enabled, without calling the `set` name. Evaluate elements from left to right and use StarlarkX equality, hashing, and insertion order. Keep `{}` as an empty dictionary; starred entries are tracked separately. | Make sets easier to write while keeping `{}` unambiguous. |
 | Expressions / Unparenthesized iterable unpacking | `STARLARK` | `DEFAULT` | `YES` | Keep starred expressions outside bracketed displays and call arguments unsupported, as in `return *items,`. Starred assignment targets are a separate decision. | Require brackets or parentheses so the resulting collection is clear. |
 | Expressions / Complex numbers and `Ellipsis` | `OPEN` | - | - | - | - |
 | Expressions / Matrix multiplication | `OPEN` | - | - | - | - |
@@ -231,7 +231,7 @@ features that need separate decisions.
 | Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
-| Dialect / `Set` | `STARLARKX` | `OPTION` | `PARTIAL` | Require `FileOptions.Set` for the built-in `set` name, set comprehensions, and planned set displays, including starred entries. An explicit `FileOptions{}` disables them; `Set: true` enables them. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable set syntax. Displays remain unimplemented. | Use one existing option for set syntax without changing API defaults or built-in name resolution. |
+| Dialect / `Set` | `STARLARKX` | `OPTION` | `PARTIAL` | Require `FileOptions.Set` for the built-in `set` name, set comprehensions, and set displays, including planned starred entries. An explicit `FileOptions{}` disables them; `Set: true` enables them. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable set syntax. Starred display entries remain unimplemented. | Use one existing option for set syntax without changing API defaults or built-in name resolution. |
 | Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Require the host to enable `while`, since its condition might never become false. |
 | Dialect / `TopLevelControl` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.TopLevelControl`: false rejects top-level `if`, `for`, and `while`, while true permits them, subject to `While` for top-level `while`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep module initialization linear by default while retaining the upstream host-controlled extension. |
 | Dialect / `GlobalReassign` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.GlobalReassign`: false enforces one top-level binding per name, while true permits reassignment and retains the existing top-level binding-resolution behavior. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep static single-assignment as the default without changing the upstream compatibility option. |
@@ -354,6 +354,7 @@ already removed.
 | Set display unpacking | `{*items}` is not supported. |
 | Dictionary display unpacking | `{**a, key: value, **b}` inserts entries from left to right into a new dictionary. Accepts iterable mappings and rejects duplicate keys across every entry using StarlarkX equality and hashing. Python replaces earlier values for duplicate keys. |
 | List and dictionary comprehensions | Eager list and dictionary comprehensions support nested `for` and `if` clauses. Their values and iteration follow StarlarkX rules. |
+| Set displays | With `Set` enabled, `{1, 2}` constructs a set directly, using StarlarkX equality, hashing, and insertion order. Elements are evaluated and inserted from left to right. `{}` constructs a dictionary. Python sets have unspecified iteration order. |
 | Set comprehensions | With `Set` enabled, `{x for x in items}` builds a set immediately. Loop variables stay local to the comprehension. Uses StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Does not build an intermediate list or call the `set` name. Python has the same syntax but different set and value rules. |
 | Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
@@ -403,8 +404,6 @@ keywords `match`, `case`, and `type` are also ordinary identifiers here.
 
 - Identity operators `is` and `is not`.
 - Assignment expressions (`:=`).
-- Set displays such as `{1, 2}`; `{}` is a dictionary. Set comprehensions and
-  generator expressions are tracked separately above.
 - Unparenthesized iterable unpacking, such as `return *items,`. Display unpacking
   and starred assignment targets are tracked separately above.
 - Complex numbers, `Ellipsis`, and complex literals.
@@ -515,7 +514,7 @@ Modern callers choose syntax and resolver behavior through
 
 | Option | Effect when true | Python compatibility effect |
 | --- | --- | --- |
-| `Set` | Allows references to the universal `set` built-in and eager set comprehensions. | Enables StarlarkX sets and Python-style set comprehension syntax. |
+| `Set` | Allows references to the universal `set` built-in, set displays, and eager set comprehensions. | Enables StarlarkX sets and Python-style set syntax. |
 | `While` | Allows `while` statements. | Closer to Python. |
 | `TopLevelControl` | Allows top-level `if`, `for`, and `while`. | Closer to Python. |
 | `GlobalReassign` | Allows rebinding top-level names. In legacy resolution it also changes how references around top-level redefinitions bind. | Closer to Python, though the legacy API couples it to other controls. |

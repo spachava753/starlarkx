@@ -1457,6 +1457,15 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 			fcomp.tuple(e.List)
 		}
 
+	case *syntax.SetExpr:
+		fcomp.emit(MAKESET)
+		for _, element := range e.List {
+			fcomp.emit(DUP)
+			fcomp.expr(element)
+			fcomp.setPos(syntax.Start(element))
+			fcomp.emit(SETADD)
+		}
+
 	case *syntax.DictExpr:
 		fcomp.emit(MAKEDICT)
 		for _, entry := range e.List {
