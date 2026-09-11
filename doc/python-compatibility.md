@@ -7,8 +7,7 @@ what differs, and which changes we have agreed to make.
 
 The comparison started from Go Starlark commit
 `5395d018f003e2a08bfbca6dcb2562acee700f62` (2026-07-08), before StarlarkX had
-its own language changes. The tables now describe the current StarlarkX code,
-not just that starting point.
+its own language changes. The tables now describe the current StarlarkX code.
 
 The Python reference version is 3.14.7. This document covers the language,
 built-ins, and their methods, not every function in Python's standard library.
@@ -69,8 +68,6 @@ behavior works today:
 - `PARTIAL`: some of it.
 - `NO`: none of it.
 - `-`: we have not chosen a behavior yet.
-
-This column is not a schedule or a measure of work in progress.
 
 Each difference listed below needs a row in this register. Add newly found
 differences as `OPEN`, with `-` in the remaining columns until we decide.
@@ -288,8 +285,7 @@ The shared core is substantial:
 | Module loading | `load("path", "name", alias="export")` is top-level-only, uses literal strings, imports explicit exported values, rejects underscore-prefixed exports, and binds names in a file-local scope. Loaded values are frozen. | `import`/`from` resolve packages and modules, bind module objects or names in global/local scopes, support dynamic import APIs, and leave module state mutable. | Addition replacing an omission |
 
 These restrictions help make configuration files predictable, safe to share
-after loading, and easier to check before running. They are deliberate choices,
-not just missing parser support.
+after loading, and easier to check before running.
 
 ### Values and collections
 
@@ -442,9 +438,9 @@ by Python's `site` module outside that reference. Exception classes such as
 `ValueError` and `TypeError` will remain unsupported under the exceptions
 decision; ordinary evaluation errors do not create language-visible exceptions.
 
-The last column explains what we need to decide before adding each one. It is
-not a promise to implement them. `Unsupported` means excluded from the core;
-the host can still expose its own APIs.
+The last column records the decision or the questions to settle before adding
+each built-in. `Unsupported` means excluded from the core; the host can still
+expose its own APIs.
 
 | Built-in | What it does in Python | StarlarkX decision or dependency |
 | --- | --- | --- |

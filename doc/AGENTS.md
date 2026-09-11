@@ -1,73 +1,77 @@
-# Documentation Agent Guide
+# Writing documentation
 
-This file applies to changes under `doc/`. Also follow the repository root
-`AGENTS.md`.
+Applies to `doc/`. Also follow the [root guide](../AGENTS.md).
 
-## Document Roles
+Read the surrounding text and match the document's level of detail.
 
-- `spec.md` is normative. It describes behavior currently implemented by
-  StarlarkX, not planned or aspirational behavior.
-- `python-compatibility.md` has two distinct jobs: its inventory records current
-  StarlarkX and Python behavior, while its decision register records accepted
-  policy and implementation state.
-- `impl.md` explains implementation architecture and should not redefine
-  language semantics.
+## Voice
 
-Keep these roles separate. A decision target belongs in the register; current
-runtime behavior belongs in the inventory and spec.
+- Use plain English, short sentences, and concrete examples. Keep technical terms
+  that explain the behavior; cut jargon that adds no information.
+- Lead with what the feature does: "Indexing returns a one-byte `bytes` value."
+  State restrictions and errors where readers need them to write correct code.
+- Keep explanations focused on the current behavior. Remove unnecessary contrasts
+  with Python, discarded approaches, and how things used to work. Python
+  comparisons belong in the compatibility document.
+- Write for someone using or maintaining the language. Leave out commentary about
+  the editing process, defensive disclaimers, and reminders of what a section
+  already says.
+- Give each paragraph a useful job. Remove sections that only repeat a table,
+  explain their own existence, or list work outside the document's scope.
 
-## Compatibility Designations
+## What belongs in each document
 
-Use the decision directions exactly as defined in
-`python-compatibility.md`:
+### `spec.md`: how the language behaves
 
-- `PYTHON`: the observable target for the named area matches the documented
-  Python baseline exactly.
-- `STARLARK`: the target intentionally preserves current Go Starlark behavior.
-- `STARLARKX`: the target is a deliberate third behavior or a hybrid of Python
-  and Starlark semantics.
-- `OPEN`: no target has been accepted.
+This is the language definition. Describe syntax, accepted inputs, results,
+evaluation order, mutation, and errors as they work today. Use runnable examples
+and label examples that intentionally fail. Spell out distinctions such as
+omitted arguments versus `None` when they affect the result.
 
-Direction applies to the full observable area named by the row. Do not label a
-broad area `PYTHON` merely because its signature or common cases match Python.
-If a target combines a Python call contract with Starlark iteration,
-comparison, value, or error semantics, either designate the broad behavior
-`STARLARKX` or split it into narrowly named rows whose targets are exact.
+Keep implementation details in `impl.md`, Python comparisons in the compatibility
+document, and future language work in the decision register. Describe each
+feature in its main section and link to it from other sections.
 
-Implementation state is relative to the selected target:
+### `impl.md`: how the implementation works
 
-- `YES`: the complete stated target is implemented.
-- `PARTIAL`: only part of the target is implemented.
-- `NO`: none of the target is implemented.
-- `-`: required for an `OPEN` row.
+Explain the algorithms, data structures, and execution model. Describe how the
+parts work together and why a design choice matters. For example, explain what
+the operand stack holds and how iterators are cleaned up.
 
-State target behavior precisely enough that `YES` can be verified. If one row
-contains independently selectable behaviors, split it before resolving it.
+Use the source code to verify the explanation, then write at the implementation
+level. Function-by-function walkthroughs, source-file tours, and lists of internal
+identifiers belong in code navigation, not in this document. Mention a specific
+API only when it is necessary to understand the design being explained.
 
-## Semantic Change Checklist
+Update this document when a feature adds or changes something worth explaining
+about the implementation. A built-in using existing mechanisms may need only a
+spec update. Keep shared explanations in one place.
 
-When observable language behavior changes:
+### `python-compatibility.md`: differences and decisions
 
-1. Confirm the decision direction and exact target.
-2. Verify Python claims against the declared Python baseline and authoritative
-   CPython sources when relevant.
-3. Update `spec.md` to describe the implemented behavior and edge cases.
-4. Update the compatibility inventory's current-behavior and classification
-   columns.
-5. Update the decision register's direction, exposure, implementation state,
-   target, and rationale.
-6. Remove resolved work from planning lists so they do not become stale.
-7. Add or update executable tests that substantiate the documentation.
+The comparison tables describe current StarlarkX and Python behavior. The
+decision register records what we chose, why, and how much is implemented.
+Keep those facts separate. Set implementation status from what the code and
+tests support, independently of the decision to add a feature.
 
-## Writing Style
+Use the label and status definitions in that document. Apply a label to the
+whole behavior named by a row, including its value and error rules. Split rows
+when their features need separate decisions. Explain the practical reason for
+keeping a difference, such as catching a missing comma or a duplicate key.
 
-- Describe observable behavior before implementation details.
-- Distinguish positional, keyword-only, omitted, `None`, empty, and error cases
-  when those distinctions affect behavior.
-- Use examples that are valid under the StarlarkX behavior being documented.
-- State retained Starlark constraints instead of hiding them behind phrases
-  such as "Python-compatible for available values."
-- Keep Markdown tables internally consistent and reasonably line-wrapped outside
-  tables.
-- Preserve existing anchors and section organization unless restructuring is
-  necessary for correctness.
+Record future language work and decisions in this committed register. Use the
+Git-ignored `.plan` directory only for temporary local implementation checklists.
+
+## Before finishing
+
+- Check claims against the code and relevant tests. Check Python claims against
+  the documented reference version.
+- Search for other mentions of the feature. Fix contradictions and stale
+  descriptions in the same update; a known documentation error can be corrected
+  independently of future feature work.
+- For implemented features, update the spec, compatibility tables, register
+  status, and grammar where needed. Add implementation notes when the design
+  warrants them. For decision-only changes, keep descriptions of current
+  behavior accurate.
+- Preserve useful headings and links. Check examples and table consistency.
+- Reread the changed text for voice before calling it done.

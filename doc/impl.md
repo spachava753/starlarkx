@@ -187,33 +187,17 @@ argument passing to builtins: UnpackArgs, UnpackPositionalArgs.
 ```
 
 <b>Evaluation strategy:</b>
-The evaluator uses a simple recursive tree walk, returning a value or
-an error for each expression. We have experimented with just-in-time
-compilation of syntax trees to bytecode, but two limitations in the
-current Go compiler prevent this strategy from outperforming the
-tree-walking evaluator.
 
-First, the Go compiler does not generate a "computed goto" for a
-switch statement ([Go issue
-5496](https://github.com/golang/go/issues/5496)). A bytecode
-interpreter's main loop is a for-loop around a switch statement with
-dozens or hundreds of cases, and the speed with which each case can be
-dispatched strongly affects overall performance.
-Currently, a switch statement generates a binary tree of ordered
-comparisons, requiring several branches instead of one.
+StarlarkX compiles source to bytecode before running it. Parsing produces a
+syntax tree, name resolution identifies the variables each name refers to,
+and compilation produces instructions for the module and its functions.
+Execution begins with the module's top-level code.
 
-Second, the Go compiler's escape analysis assumes that the underlying
-array from a `make([]Value, n)` allocation always escapes
-([Go issue 20533](https://github.com/golang/go/issues/20533)).
-Because the bytecode interpreter's operand stack has a non-constant
-length, it must be allocated with `make`. The resulting allocation
-adds to the cost of each Starlark function call; this can be tolerated
-by amortizing one very large stack allocation across many calls.
-More problematic appears to be the cost of the additional GC write
-barriers incurred by every VM operation: every intermediate result is
-saved to the VM's operand stack, which is on the heap.
-By contrast, intermediate results in the tree-walking evaluator are
-never stored to the heap.
+Each function call has space for local variables and an operand stack that
+holds intermediate values. Arguments fill the parameter slots, then the
+interpreter runs the function's instructions. It counts execution steps and
+checks for cancellation as it runs. Active iterators are tracked separately
+and cleaned up when the function exits, including on errors.
 
 ```
 TODO

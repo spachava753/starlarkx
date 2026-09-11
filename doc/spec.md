@@ -194,12 +194,10 @@ A single underscore may separate adjacent digits or follow a `0b`, `0o`, or
 trail a number, or touch a decimal point, exponent marker, or exponent sign.
 For example, `1_000`, `0x_ff_ff`, and `1.2_5e1_0` are valid; `1__0`, `1_`,
 `1_.0`, and `1e_2` are not. Nonzero decimal integers cannot have leading zeros;
-`0_0` is valid but `0_1` is not. This syntax does not change string-conversion
-built-ins such as `int` and `float`.
+`0_0` is valid but `0_1` is not.
 
-The existing Go implementation's literal range rules still apply: binary and
-octal integer literals must fit in a signed 64-bit integer, whereas decimal and
-hexadecimal literals support arbitrary-size integers.
+Binary and octal integer literals must fit in a signed 64-bit integer.
+Decimal and hexadecimal literals support arbitrary-size integers.
 
 It is a static error if a floating-point literal denotes a value whose
 magnitude is too large to be represented as a finite `float` value.
@@ -661,8 +659,8 @@ The built-in `len` function returns the number of bytes. Two bytes values may
 be concatenated using `+`, and a bytes value may be repeated using `*` with an
 integer operand.
 
-Bytes values support indexing and slicing. Unlike Python, indexing returns a
-one-byte `bytes` value, not an integer. Slicing returns another `bytes` value.
+Indexing a bytes value returns a one-byte `bytes` value. Slicing returns another
+`bytes` value.
 
 The comparison `x in b`, where `b` is a bytes value, accepts either form:
 
@@ -1122,9 +1120,8 @@ argument may yet have two values for the same name, such as
 Function arguments are evaluated in the order they appear in the call.
 <!-- see https://github.com/bazelbuild/starlark/issues/13 -->
 
-Unlike Python, Starlark does not allow more than one `*args` argument in a
-call, and if a `*args` argument is present it must appear after all
-positional and named arguments.
+A call may contain at most one `*args` argument, which must appear after all
+ordinary positional and named arguments.
 
 The final argument to a function call may be followed by a trailing comma.
 
@@ -2539,8 +2536,8 @@ nearest value in the range -1 to `n`-1, inclusive.
 "banana"[4::-2]         # "nnb" (select alternate elements in reverse, starting at index 4)
 ```
 
-Unlike Python, Starlark does not allow a slice expression on the left
-side of an assignment.
+List slices may be used as assignment targets; see
+[List slice assignment](#list-slice-assignment).
 
 Slicing an immutable value may be more efficient than slicing a list because
 the result can sometimes share the underlying representation of the original
@@ -2678,10 +2675,9 @@ in `for` loops and in comprehensions.
 
 #### List slice assignment
 
-`items[start:stop:step] = values` replaces selected elements of a list without
-rebinding `items`. Other references to the list observe the changed contents.
-Only lists support slice assignment; this does not add a host slice-mutation
-protocol or make tuples, strings, or bytes mutable.
+`items[start:stop:step] = values` replaces selected elements in the existing list.
+Other references to the list observe the changed contents. Only lists support
+slice assignment.
 
 The right-hand expression is evaluated first, then the list expression and each
 explicit bound from left to right, exactly once. Bounds must be integers or
@@ -2998,9 +2994,8 @@ for a, i in [["a", 1], ["b", 2], ["c", 3]]:
   print(a, i)                          # prints "a 1", "b 2", "c 3"
 ```
 
-Because Starlark loops always iterate over a finite sequence, they are
-guaranteed to terminate, unlike loops in most languages which can
-execute an arbitrary and perhaps unbounded number of iterations.
+The loop requests items from the iterable one at a time, running the body for
+each item, until the iterable is exhausted.
 
 Within the body of a `for` loop, `break` and `continue` statements may
 be used to stop the execution of the loop or advance to the next
@@ -3621,9 +3616,8 @@ With three arguments, `range(start, stop, step)` returns integers
 formed by successively adding `step` to `start` until the value meets or passes `stop`.
 A call to `range` fails if the value of `step` is zero.
 
-A call to `range` does not materialize the entire sequence, but
-returns a fixed-size value of type `"range"` that represents the
-parameters that define the sequence.
+A call to `range` returns a fixed-size value of type `"range"` that stores the
+parameters defining the sequence.
 The `range` value is iterable and may be indexed efficiently.
 
 ```python

@@ -15,8 +15,8 @@ semantics where they remain preferable. The module path is
 Starlark is a dialect of Python intended for use as a configuration language.
 Like Python, it is an untyped dynamic language with high-level data
 types, first-class functions with lexical scope, and garbage collection.
-Unlike CPython, independent Starlark threads execute in parallel, so
-Starlark workloads scale well on parallel machines.
+Independent Starlark threads execute in parallel, allowing independent
+workloads to run across multiple cores.
 Starlark is a small and simple language with a familiar and highly
 readable syntax. You can use it as an expressive notation for
 structured data, defining functions to eliminate repetition, or you
