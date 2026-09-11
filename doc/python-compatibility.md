@@ -127,6 +127,8 @@ before resolving any of them.
 | Syntax / Unparenthesized singleton tuples | `OPEN` | - | - | - | - |
 | Syntax / Trailing commas | `OPEN` | - | - | - | - |
 | Syntax / Assignment | `OPEN` | - | - | - | - |
+| Syntax / List slice assignment | `OPEN` | - | - | - | - |
+| Syntax / `load` in attribute position | `OPEN` | - | - | - | - |
 | Syntax / Display unpacking | `OPEN` | - | - | - | - |
 | Syntax / Comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `NO` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
@@ -291,7 +293,9 @@ construct but intentionally or currently accepts less syntax.
 | Adjacent string literals | No implicit concatenation: `"a" "b"` is a parse error; use `"a" + "b"`. |
 | Unparenthesized singleton tuples | `x = value,` is rejected; write `x = (value,)`. Multi-element unparenthesized tuples remain valid in selected contexts. |
 | Trailing commas | A trailing comma is rejected in unparenthesized tuple expressions and loop/comprehension targets where Python accepts it. It is accepted in calls and bracketed displays. |
-| Assignment | There is no chained assignment (`a = b = 0`), starred target (`a, *rest = xs`), or slice assignment (`xs[1:3] = ys`). Compound targets must match the source sequence exactly. |
+| Assignment | There is no chained assignment (`a = b = 0`) or starred target (`a, *rest = xs`). Compound targets must match the source sequence exactly. |
+| List slice assignment | Reading slices is supported, but assigning to a slice (`xs[1:3] = ys`) is rejected. Python lists support contiguous replacement with resizing and extended-slice replacement with matching lengths. |
+| `load` in attribute position | `load` is a hard keyword, so `obj.load` is rejected even when the host exposes that attribute. Python permits `obj.load` because `load` is not a Python keyword. |
 | Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
 | Comprehensions | Only eager list and dictionary comprehensions exist. There are no set comprehensions, generator expressions, or async comprehensions. |
 | Loop clauses | `for` and `while` have no `else` clause. |
