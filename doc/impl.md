@@ -76,6 +76,24 @@ the normal value representation for other types. String addition joins the
 parts. Conversion uses the runtime operation directly, so a local binding of
 `str` cannot affect interpolation.
 
+## Parameter binding
+
+The parser represents `/` as a parameter-list marker. The resolver requires
+one or more positional parameters before it, permits it once, and rejects it
+after a star marker. Default ordering and duplicate-name checks apply across
+the marker. It creates no variable slot.
+
+Compiled functions store the number of positional-only parameters alongside
+the total and keyword-only counts. These counts are also stored in serialized
+programs. Parameter slots remain contiguous: positional-only parameters come
+first, then positional-or-keyword and keyword-only parameters, followed by
+any variadic tuple and keyword dictionary.
+
+Calls fill positional slots in order. Keyword binding skips the positional-only
+slots, so a matching keyword is collected in the variadic keyword dictionary
+or rejected if there is none. Defaults and missing-argument checks then fill
+or check the remaining slots, including positional-only slots.
+
 ## Evaluator
 
 ### Data types

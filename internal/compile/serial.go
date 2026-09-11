@@ -199,6 +199,7 @@ func (e *encoder) function(fn *Funcode) {
 	e.bindings(fn.FreeVars)
 	e.int(fn.MaxStack)
 	e.int(fn.NumParams)
+	e.int(fn.NumPosonlyParams)
 	e.int(fn.NumKwonlyParams)
 	e.int(b2i(fn.HasVarargs))
 	e.int(b2i(fn.HasKwargs))
@@ -370,23 +371,25 @@ func (d *decoder) function() *Funcode {
 	freevars := d.bindings()
 	maxStack := d.int()
 	numParams := d.int()
+	numPosonlyParams := d.int()
 	numKwonlyParams := d.int()
 	hasVarargs := d.int() != 0
 	hasKwargs := d.int() != 0
 	return &Funcode{
 		// Prog is filled in later.
-		Pos:             id.Pos,
-		Name:            id.Name,
-		Doc:             doc,
-		Code:            code,
-		pclinetab:       pclinetab,
-		Locals:          locals,
-		Cells:           cells,
-		FreeVars:        freevars,
-		MaxStack:        maxStack,
-		NumParams:       numParams,
-		NumKwonlyParams: numKwonlyParams,
-		HasVarargs:      hasVarargs,
-		HasKwargs:       hasKwargs,
+		Pos:              id.Pos,
+		Name:             id.Name,
+		Doc:              doc,
+		Code:             code,
+		pclinetab:        pclinetab,
+		Locals:           locals,
+		Cells:            cells,
+		FreeVars:         freevars,
+		MaxStack:         maxStack,
+		NumParams:        numParams,
+		NumPosonlyParams: numPosonlyParams,
+		NumKwonlyParams:  numKwonlyParams,
+		HasVarargs:       hasVarargs,
+		HasKwargs:        hasKwargs,
 	}
 }

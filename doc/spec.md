@@ -1030,7 +1030,9 @@ position, as in the example above, or by name, as in first two calls
 below, or by a mixture of the two forms, as in the third call below.
 All the positional arguments must precede all the named arguments.
 Named arguments may improve clarity, especially in functions of
-several parameters.
+several parameters. A `/` in the definition makes preceding parameters
+positional-only; parameters after `*` are keyword-only. See
+[function definitions](#function-definitions) for the binding rules.
 
 ```python
 idiv(x=6, y=3)		# 2
@@ -1044,7 +1046,7 @@ default value using `name=value` syntax; such a parameter is
 _optional_.  The default value expression is evaluated during
 execution of the `def` statement or evaluation of the `lambda`
 expression, and the default value forms part of the function value.
-All optional parameters must follow all non-optional parameters.
+Optional positional parameters must follow required positional parameters.
 A function call may omit arguments for any suffix of the optional
 parameters; the effective values of those arguments are supplied by
 the function's parameter defaults.
@@ -1100,8 +1102,10 @@ provide an arbitrary sequence of `name=value` keyword arguments.
 A function definition may include a final _keyword arguments_ or
 _kwargs_ parameter, indicated by a double-star preceding the parameter
 name: `**kwargs`.
-Any surplus named arguments that do not correspond to named parameters
-are collected in a new dictionary and assigned to the `kwargs` parameter:
+Any surplus named arguments that do not correspond to keyword-capable parameters
+are collected in a new dictionary and assigned to the `kwargs` parameter.
+Names of [positional-only parameters](#function-definitions) also go into this
+dictionary:
 
 ```python
 def f(x, y, **kwargs):
@@ -2583,6 +2587,7 @@ LambdaExpr = 'lambda' [Parameters] ':' Test .
 Parameters = Parameter {',' Parameter} .
 Parameter  = identifier
            | identifier '=' Test
+           | '/'
            | '*'
            | '*' identifier
            | '**' identifier
@@ -2810,8 +2815,37 @@ parameters, of the form `name=expression`.  The expression specifies
 the default value for the parameter for use in calls that do not
 provide an argument value for it.
 
-The required parameters are optionally followed by a single parameter
-name preceded by a `*`.  This is the called the _varargs_ parameter,
+A `/` marker makes every preceding parameter _positional-only_. It must
+follow at least one parameter, occur at most once, and precede any `*`,
+`*args`, or `**kwargs`. Parameters on both sides of `/` share the same default
+ordering rule: a required positional parameter cannot follow one with a
+default. The marker can end the parameter list, with an optional comma,
+in both `def` and `lambda`.
+
+```python
+def select(item, /, default=None):
+    return item if item else default
+
+select(0, default=5)             # 5
+select(item=1)                   # error: item is positional-only
+(lambda x, /: x + 1)(2)         # 3
+```
+
+A keyword matching a positional-only parameter goes into `**kwargs`, if
+present. It never supplies that parameter's value. Without `**kwargs`, the
+keyword is an error, even if the parameter already received a positional
+argument or has a default.
+
+```python
+def collect(item=1, /, **kwargs):
+    return item, kwargs
+
+collect(item=2)                  # (1, {"item": 2})
+collect(3, item=2)               # (3, {"item": 2})
+```
+
+The required and optional positional parameters may be followed by a parameter
+name preceded by a `*`. This is called the _varargs_ parameter,
 and it accumulates surplus positional arguments specified by a call.
 It is conventionally named `*args`.
 

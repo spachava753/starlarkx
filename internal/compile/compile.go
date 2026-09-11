@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 18
+const Version = 19
 
 type Opcode uint8
 
@@ -350,6 +350,7 @@ type Funcode struct {
 	FreeVars              []Binding       // for tracing
 	MaxStack              int
 	NumParams             int
+	NumPosonlyParams      int
 	NumKwonlyParams       int
 	HasVarargs, HasKwargs bool
 
@@ -1924,7 +1925,9 @@ func (fcomp *fcomp) function(f *resolve.Function) {
 			fcomp.expr(param.Y)
 			ndefaults++
 		case *syntax.UnaryExpr:
-			seenStar = true // * or *args (also **kwargs)
+			if param.Op != syntax.SLASH {
+				seenStar = true // * or *args (also **kwargs)
+			}
 		case *syntax.Ident:
 			if seenStar {
 				fcomp.emit(MANDATORY)
@@ -1963,7 +1966,11 @@ func (fcomp *fcomp) function(f *resolve.Function) {
 		numParams--
 	}
 
+	if f.NumPosonlyParams > 0 {
+		numParams-- // / occupies no parameter slot
+	}
 	funcode.NumParams = numParams
+	funcode.NumPosonlyParams = f.NumPosonlyParams
 	funcode.NumKwonlyParams = f.NumKwonlyParams
 	funcode.HasVarargs = f.HasVarargs
 	funcode.HasKwargs = f.HasKwargs

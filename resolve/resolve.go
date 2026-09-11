@@ -863,7 +863,7 @@ func (r *resolver) function(function *Function, pos syntax.Position) {
 	var star *syntax.UnaryExpr // * or *args param
 	var starStar *syntax.Ident // **kwargs ident
 	var numKwonlyParams int
-	for _, param := range function.Params {
+	for index, param := range function.Params {
 		switch param := param.(type) {
 		case *syntax.Ident:
 			// e.g. x
@@ -891,6 +891,14 @@ func (r *resolver) function(function *Function, pos syntax.Position) {
 			seenOptional = true
 
 		case *syntax.UnaryExpr:
+			if param.Op == syntax.SLASH {
+				if index == 0 || function.NumPosonlyParams > 0 || star != nil || starStar != nil {
+					r.errorf(param.OpPos, "/ must follow positional parameters and precede * or **")
+				} else {
+					function.NumPosonlyParams = index
+				}
+				continue
+			}
 			// * or *args or **kwargs
 			if param.Op == syntax.STAR {
 				if starStar != nil {

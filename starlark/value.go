@@ -772,6 +772,7 @@ func (fn *Function) Globals() StringDict { return fn.module.Globals() }
 
 func (fn *Function) Position() syntax.Position { return fn.funcode.Pos }
 func (fn *Function) NumParams() int            { return fn.funcode.NumParams }
+func (fn *Function) NumPosonlyParams() int     { return fn.funcode.NumPosonlyParams }
 func (fn *Function) NumKwonlyParams() int      { return fn.funcode.NumKwonlyParams }
 
 // Param returns the name and position of the ith parameter,

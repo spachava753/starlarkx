@@ -481,6 +481,7 @@ func (p *parser) consume(t Token) Position {
 //
 //	*Ident                                          x
 //	*Binary{Op: EQ, X: *Ident, Y: Expr}             x=y
+//	*Unary{Op: SLASH}                               /
 //	*Unary{Op: STAR}                                *
 //	*Unary{Op: STAR, X: *Ident}                     *args
 //	*Unary{Op: STARSTAR, X: *Ident}                 **kwargs
@@ -492,6 +493,16 @@ func (p *parser) parseParams() []Expr {
 		}
 		if p.tok == RPAREN {
 			break
+		}
+		if p.tok == COLON && len(params) > 0 {
+			if marker, ok := params[len(params)-1].(*UnaryExpr); ok && marker.Op == SLASH {
+				break
+			}
+		}
+
+		if p.tok == SLASH {
+			params = append(params, &UnaryExpr{OpPos: p.nextToken(), Op: SLASH})
+			continue
 		}
 
 		// * or *args or **kwargs

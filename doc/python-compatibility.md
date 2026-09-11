@@ -146,7 +146,7 @@ features that need separate decisions.
 | Syntax / Generator expressions | `OPEN` | - | - | - | - |
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Allow `else` on `for` and `while`. Run it when the iterable runs out or the condition becomes false, including when the body never runs. Skip it when `break` exits that loop. | Make it easy to handle a search that finishes without finding a match. |
-| Syntax / Positional-only function parameters | `PYTHON` | `DEFAULT` | `NO` | Allow `/` in function and lambda parameter lists with Python's placement and argument-binding rules. Parameters before `/` cannot be supplied by keyword; a keyword with the same name may instead go into `**kwargs`. Leave default values, scope, and value behavior unchanged. | Let function authors require positional arguments where names should not be part of the calling interface. |
+| Syntax / Positional-only function parameters | `PYTHON` | `DEFAULT` | `YES` | Allow `/` in function and lambda parameter lists with Python's placement and argument-binding rules. Parameters before `/` cannot be supplied by keyword; a keyword with the same name may instead go into `**kwargs`. Leave default values, scope, and value behavior unchanged. | Let function authors require positional arguments where names should not be part of the calling interface. |
 | Syntax / Function decorators | `STARLARK` | `DEFAULT` | `YES` | Keep `@decorator` syntax unsupported. Wrap functions through explicit calls and assignments instead. | Make it clear when code calls a wrapper and replaces a function. |
 | Syntax / Type parameters | `STARLARK` | `DEFAULT` | `YES` | Keep type-parameter lists such as `def f[T](x)` unsupported. | Do not add generic type syntax without a type system to support it. |
 | Syntax / Numeric separators | `PYTHON` | `DEFAULT` | `YES` | Allow underscores between digits and immediately after `0b`, `0o`, or `0x`, as Python does. Accept `1_000`, `0x_ff`, and `1.2_5e1_0`; reject forms such as `1__0`, `1_`, and `1e_2`. This decision covers underscore placement only, not numeric ranges, `int`/`float` string conversions, or imaginary literals. | Make long numbers easier to read. |
@@ -358,7 +358,7 @@ already removed.
 | Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
 | Loop clauses | As in Python, `else` on a `for` or `while` runs when the iterable runs out or the condition becomes false, even if the body never runs. It does not run when `break`, `return`, or an error exits the loop. Existing loop options still apply. |
-| Positional-only function parameters | No `/` marker in function or lambda parameter lists. |
+| Positional-only function parameters | `/` in function and lambda parameter lists makes preceding parameters positional-only, with Python's placement, default ordering, and binding rules. A same-named keyword goes into `**kwargs` if present; otherwise it is an error. |
 | Function decorators | `@decorator` syntax is not supported. |
 | Type parameters | Function and class type-parameter lists are not supported. |
 | Numeric separators | Allows Python-style underscores in integer and decimal float literals, such as `1_000` and `1.2_5`. Underscores do not change the value. Invalid forms such as `1__0` are errors. |

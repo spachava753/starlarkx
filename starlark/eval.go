@@ -1563,7 +1563,7 @@ func setArgs(locals []Value, fn *Function, args Tuple, kwargs []Tuple) error {
 	paramIdents := fn.funcode.Locals[:nparams]
 	for _, pair := range kwargs {
 		k, v := pair[0].(String), pair[1]
-		if i := findParam(paramIdents, string(k)); i >= 0 {
+		if i := findParam(paramIdents, string(k)); i >= fn.NumPosonlyParams() {
 			if locals[i] != nil {
 				return fmt.Errorf("function %s got multiple values for parameter %s", fn.Name(), k)
 			}
@@ -1571,6 +1571,9 @@ func setArgs(locals []Value, fn *Function, args Tuple, kwargs []Tuple) error {
 			continue
 		}
 		if kwdict == nil {
+			if findParam(paramIdents[:fn.NumPosonlyParams()], string(k)) >= 0 {
+				return fmt.Errorf("function %s got positional-only parameter %s by keyword", fn.Name(), k)
+			}
 			return fmt.Errorf("function %s got an unexpected keyword argument %s", fn.Name(), k)
 		}
 		oldlen := kwdict.Len()

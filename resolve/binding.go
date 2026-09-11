@@ -63,12 +63,13 @@ type Module struct {
 type Function struct {
 	Pos    syntax.Position // of DEF or LAMBDA
 	Name   string          // name of def, or "lambda"
-	Params []syntax.Expr   // param = ident | ident=expr | * | *ident | **ident
+	Params []syntax.Expr   // param = ident | ident=expr | / | * | *ident | **ident
 	Body   []syntax.Stmt   // contains synthetic 'return expr' for lambda
 
-	HasVarargs      bool       // whether params includes *args (convenience)
-	HasKwargs       bool       // whether params includes **kwargs (convenience)
-	NumKwonlyParams int        // number of keyword-only optional parameters
-	Locals          []*Binding // this function's local/cell variables, parameters first
-	FreeVars        []*Binding // enclosing cells to capture in closure
+	HasVarargs       bool       // whether params includes *args (convenience)
+	HasKwargs        bool       // whether params includes **kwargs (convenience)
+	NumPosonlyParams int        // number of parameters before /
+	NumKwonlyParams  int        // number of keyword-only optional parameters
+	Locals           []*Binding // this function's local/cell variables, parameters first
+	FreeVars         []*Binding // enclosing cells to capture in closure
 }
