@@ -519,6 +519,19 @@ loop:
 			stack[sp] = res
 			sp++
 
+		case compile.UNPACKEX:
+			before, _ := stack[sp-1].(Int).Int64()
+			values, err2 := unpackRest(stack[sp-2], int(arg), int(before))
+			sp -= 2
+			if err2 != nil {
+				err = err2
+				break loop
+			}
+			for i := len(values) - 1; i >= 0; i-- {
+				stack[sp] = values[i]
+				sp++
+			}
+
 		case compile.UNPACK:
 			n := int(arg)
 			iterable := stack[sp-1]
@@ -535,6 +548,7 @@ loop:
 			}
 			var dummy Value
 			if iter.Next(&dummy) {
+				iter.Done()
 				// NB: Len may return -1 here in obscure cases.
 				err = fmt.Errorf("too many values to unpack (got %d, want %d)", Len(iterable), n)
 				break loop

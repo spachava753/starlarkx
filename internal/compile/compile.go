@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 19
+const Version = 20
 
 type Opcode uint8
 
@@ -142,6 +142,7 @@ const (
 	UNIVERSAL    //                 - UNIVERSAL<name>     value
 	ATTR         //                 x ATTR<name>          y           y = x.name
 	SETFIELD     //               x y SETFIELD<name>      -           x.name = y
+	UNPACKEX     // iterable starIndex UNPACKEX<n>        vn ... v1
 	UNPACK       //          iterable UNPACK<n>           vn ... v1
 
 	// n>>8 is #positional args and n&0xff is #named args (pairs).
@@ -227,6 +228,7 @@ var opcodeNames = [...]string{
 	TRUE:         "true",
 	UMINUS:       "uminus",
 	UNIVERSAL:    "universal",
+	UNPACKEX:     "unpackex",
 	UNPACK:       "unpack",
 	UPLUS:        "uplus",
 }
@@ -304,6 +306,7 @@ var stackEffect = [...]int8{
 	TRUE:         +1,
 	UMINUS:       0,
 	UNIVERSAL:    +1,
+	UNPACKEX:     variableStackEffect,
 	UNPACK:       variableStackEffect,
 	UPLUS:        0,
 }
@@ -735,6 +738,8 @@ func (insn *insn) stackeffect() int {
 			se = 0
 		case MAKELIST, MAKETUPLE:
 			se = 1 - arg
+		case UNPACKEX:
+			se = arg - 2
 		case UNPACK:
 			se = arg - 1
 		default:
@@ -1323,9 +1328,23 @@ func (fcomp *fcomp) assign(pos syntax.Position, lhs syntax.Expr) {
 
 func (fcomp *fcomp) assignSequence(pos syntax.Position, lhs []syntax.Expr) {
 	fcomp.setPos(pos)
-	fcomp.emit1(UNPACK, uint32(len(lhs)))
-	for i := range lhs {
-		fcomp.assign(pos, lhs[i])
+	starIndex := -1
+	for i, target := range lhs {
+		if star, ok := target.(*syntax.UnaryExpr); ok && star.Op == syntax.STAR {
+			starIndex = i
+		}
+	}
+	if starIndex < 0 {
+		fcomp.emit1(UNPACK, uint32(len(lhs)))
+	} else {
+		fcomp.emit1(CONSTANT, fcomp.pcomp.constantIndex(int64(starIndex)))
+		fcomp.emit1(UNPACKEX, uint32(len(lhs)))
+	}
+	for i, target := range lhs {
+		if i == starIndex {
+			target = target.(*syntax.UnaryExpr).X
+		}
+		fcomp.assign(pos, target)
 	}
 }
 

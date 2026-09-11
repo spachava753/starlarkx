@@ -94,6 +94,24 @@ slots, so a matching keyword is collected in the variadic keyword dictionary
 or rejected if there is none. Defaults and missing-argument checks then fill
 or check the remaining slots, including positional-only slots.
 
+## Sequence assignment
+
+The parser represents a starred target as a unary star node. The resolver
+allows one such node directly inside each tuple or list target and validates
+its operand as another target. Each nested target list has its own star count.
+Stars in ordinary expressions remain subject to their expression context.
+
+For ordinary unpacking, the compiler emits the required length. The evaluator
+reads that many items and checks for one extra item. For starred unpacking,
+the compiler supplies the number of targets and the star's index. The evaluator
+collects the iterable, checks the minimum length, and divides the items into a
+fixed prefix, a new rest list, and a fixed suffix.
+
+Both operations release their iterator on success or length errors. Values
+are placed on the operand stack in reverse target order, so the compiler can
+assign targets from left to right. A nested target performs its own unpacking
+when it is reached; assignments already completed remain visible if it fails.
+
 ## Evaluator
 
 ### Data types

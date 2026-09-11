@@ -8,7 +8,8 @@ x = 1 + ### "got newline, want primary expression"
 
 ---
 
-_ = *x ### `got '\*', want primary`
+# Starred expressions are parsed here and validated by the resolver.
+_ = *x
 
 ---
 # trailing comma is ok

@@ -285,10 +285,18 @@ func (p *parser) parseWhileStmt() Stmt {
 // Equivalent to 'exprlist' production in Python grammar.
 //
 // loop_variables = primary_with_suffix (COMMA primary_with_suffix)* COMMA?
+func (p *parser) parseLoopTarget() Expr {
+	if p.tok == STAR {
+		pos := p.nextToken()
+		return &UnaryExpr{OpPos: pos, Op: STAR, X: p.parsePrimaryWithSuffix()}
+	}
+	return p.parsePrimaryWithSuffix()
+}
+
 func (p *parser) parseForLoopVariables() Expr {
 	// Avoid parseExpr because it would consume the IN token
 	// following x in "for x in y: ...".
-	v := p.parsePrimaryWithSuffix()
+	v := p.parseLoopTarget()
 	if p.tok != COMMA {
 		return v
 	}
@@ -299,7 +307,7 @@ func (p *parser) parseForLoopVariables() Expr {
 		if terminatesExprList(p.tok) {
 			break
 		}
-		list = append(list, p.parsePrimaryWithSuffix())
+		list = append(list, p.parseLoopTarget())
 	}
 	return &TupleExpr{List: list}
 }
@@ -546,8 +554,16 @@ func (p *parser) parseParams() []Expr {
 //
 // In many cases we must use parseTest to avoid ambiguity such as
 // f(x, y) vs. f((x, y)).
+func (p *parser) parseStarTest() Expr {
+	if p.tok == STAR {
+		pos := p.nextToken()
+		return &UnaryExpr{OpPos: pos, Op: STAR, X: p.parseTest()}
+	}
+	return p.parseTest()
+}
+
 func (p *parser) parseExpr(inParens bool) Expr {
-	x := p.parseTest()
+	x := p.parseStarTest()
 	if p.tok != COMMA {
 		return x
 	}
@@ -569,7 +585,7 @@ func (p *parser) parseExprs(exprs []Expr, allowTrailingComma bool) []Expr {
 			}
 			break
 		}
-		exprs = append(exprs, p.parseTest())
+		exprs = append(exprs, p.parseStarTest())
 	}
 	return exprs
 }
@@ -952,7 +968,7 @@ func (p *parser) parseList() Expr {
 		return &ListExpr{Lbrack: lbrack, Rbrack: rbrack}
 	}
 
-	x := p.parseTest()
+	x := p.parseStarTest()
 
 	if p.tok == FOR {
 		// list comprehension

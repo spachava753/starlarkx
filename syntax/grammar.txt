@@ -34,7 +34,12 @@ ReturnStmt   = 'return' [Expression] .
 BreakStmt    = 'break' .
 ContinueStmt = 'continue' .
 PassStmt     = 'pass' .
-AssignStmt   = Expression ('=' | '+=' | '-=' | '*=' | '/=' | '//=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') Expression .
+AssignStmt   = Targets ('=' | '+=' | '-=' | '*=' | '/=' | '//=' | '%=' | '&=' | '|=' | '^=' | '<<=' | '>>=') Expression .
+Targets      = TargetEntry {',' TargetEntry} .
+TargetEntry  = Target | '*' Target .
+Target       = PrimaryExpr | '[' [Targets [',']] ']' | '(' Targets [','] ')' .
+# A star requires a target list; each list permits at most one star.
+# Augmented assignment requires one unstarred, non-sequence target.
 ExprStmt     = Expression .
 
 LoadStmt = 'load' '(' string {',' [identifier '='] string} [','] ')' .
@@ -99,7 +104,7 @@ Binop = 'or'
 Expression = Test {',' Test} .
 # NOTE: trailing comma permitted only when within [...] or (...).
 
-LoopVariables = PrimaryExpr {',' PrimaryExpr} .
+LoopVariables = TargetEntry {',' TargetEntry} .
 
 
 # Notation (similar to Go spec):

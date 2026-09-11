@@ -2315,7 +2315,7 @@ SetComp  = '{' Test 'for' LoopVariables 'in' Test {CompClause} '}' .
 CompClause = 'for' LoopVariables 'in' Test
            | 'if' Test .
 
-LoopVariables = PrimaryExpr {',' PrimaryExpr} .
+LoopVariables = TargetEntry {',' TargetEntry} .
 ```
 
 Examples:
@@ -2670,7 +2670,10 @@ expression on the right-hand side then assigns its value (or values) to
 the variable (or variables) on the left-hand side.
 
 ```grammar {.good}
-AssignStmt = Expression '=' Expression .
+AssignStmt = Targets '=' Expression .
+Targets = TargetEntry {',' TargetEntry} .
+TargetEntry = Target | '*' Target .
+Target = PrimaryExpr | '[' [Targets [',']] ']' | '(' Targets [','] ')' .
 ```
 
 The expression on the left-hand side is called a _target_.  The
@@ -2688,10 +2691,29 @@ m.f = ""
 Compound targets may consist of a comma-separated list of
 subtargets, optionally surrounded by parentheses or square brackets,
 and targets may be nested arbitrarily in this way.
-An assignment to a compound target checks that the right-hand value is a
-sequence with the same number of elements as the target.
-Each element of the sequence is then assigned to the corresponding
-element of the target, recursively applying the same logic.
+An assignment to a compound target consumes a StarlarkX iterable. Without a
+starred target, its length must match the number of targets exactly. Each
+value is then assigned to its target from left to right, recursively applying
+the same rules to nested targets.
+
+Each target list may contain one starred target, such as `first, *rest, last`.
+The other targets receive the first and last items. The starred target receives
+a new list of the remaining items, which may be empty. Too few items for the
+unstarred targets is an error. Nested target lists may each have their own star.
+A star must occur in a target list, so a lone `*rest = items` is invalid; write
+`[*rest] = items` instead.
+
+```python
+first, *rest = range(4)         # first = 0, rest = [1, 2, 3]
+first, *middle, last = [1, 2]   # middle = []
+(a, *b), *c = [(1, 2, 3), 4]  # a = 1, b = [2, 3], c = [4]
+```
+
+Unpacking at each level finishes and releases its iterator before that level's
+targets are assigned. Target expressions are then evaluated in assignment
+order. If a later target fails, earlier assignments remain in effect. Rest
+lists contain the original items; they do not copy the items themselves.
+Index, slice, and attribute targets retain their usual mutation checks.
 
 ```python
 pi, e = 3.141, 2.718

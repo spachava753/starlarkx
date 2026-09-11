@@ -637,18 +637,14 @@ func (r *resolver) assign(lhs syntax.Expr, isAugmented bool) {
 		if isAugmented {
 			r.errorf(syntax.Start(lhs), "can't use tuple expression in augmented assignment")
 		}
-		for _, elem := range lhs.List {
-			r.assign(elem, isAugmented)
-		}
+		r.assignSequence(lhs.List, isAugmented)
 
 	case *syntax.ListExpr:
 		// [x, y, z] = ...
 		if isAugmented {
 			r.errorf(syntax.Start(lhs), "can't use list expression in augmented assignment")
 		}
-		for _, elem := range lhs.List {
-			r.assign(elem, isAugmented)
-		}
+		r.assignSequence(lhs.List, isAugmented)
 
 	case *syntax.ParenExpr:
 		r.assign(lhs.X, isAugmented)
@@ -656,6 +652,20 @@ func (r *resolver) assign(lhs syntax.Expr, isAugmented bool) {
 	default:
 		name := strings.ToLower(strings.TrimPrefix(fmt.Sprintf("%T", lhs), "*syntax."))
 		r.errorf(syntax.Start(lhs), "can't assign to %s", name)
+	}
+}
+
+func (r *resolver) assignSequence(targets []syntax.Expr, augmented bool) {
+	seenStar := false
+	for _, target := range targets {
+		if star, ok := target.(*syntax.UnaryExpr); ok && star.Op == syntax.STAR {
+			if seenStar {
+				r.errorf(star.OpPos, "multiple starred targets in assignment")
+			}
+			seenStar = true
+			target = star.X
+		}
+		r.assign(target, augmented)
 	}
 }
 
@@ -744,6 +754,9 @@ func (r *resolver) expr(e syntax.Expr) {
 		}
 
 	case *syntax.UnaryExpr:
+		if e.Op == syntax.STAR {
+			r.errorf(e.OpPos, "starred expression is only allowed in an assignment target list")
+		}
 		r.expr(e.X)
 
 	case *syntax.BinaryExpr:
@@ -773,7 +786,7 @@ func (r *resolver) expr(e syntax.Expr) {
 					r.errorf(pos, "multiple **kwargs not allowed")
 				}
 				seenKwargs = true
-				r.expr(arg)
+				r.expr(unop.X)
 			} else if ok && unop.Op == syntax.STAR {
 				// *args
 				if seenKwargs {
@@ -782,7 +795,7 @@ func (r *resolver) expr(e syntax.Expr) {
 					r.errorf(pos, "multiple *args not allowed")
 				}
 				seenVarargs = true
-				r.expr(arg)
+				r.expr(unop.X)
 			} else if binop, ok := arg.(*syntax.BinaryExpr); ok && binop.Op == syntax.EQ {
 				// k=v
 				n++
