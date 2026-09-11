@@ -13,10 +13,6 @@ not just that starting point.
 The Python reference version is 3.14.7. This document covers the language,
 built-ins, and their methods, not every function in Python's standard library.
 
-In function signatures, parameters before `/` must be positional. Parameters
-after `*` must be named: `sorted(items, reverse=True)`, not
-`sorted(items, None, True)`.
-
 The classifications used below are:
 
 - **Divergence**: both languages have a corresponding construct, but accepted
@@ -37,54 +33,67 @@ The decision table below records the behavior we want and whether it is
 implemented. The later comparison tables describe what the code does today.
 A difference from Python does not, by itself, mean we plan to change it.
 
-Each decision chooses one semantic direction:
+We want useful Python features, but not behavior that makes mistakes easy to miss.
+Keep Starlark's checks when they help catch those mistakes, and explain why we
+chose to differ from Python. A difference is not necessarily something to fix.
 
-- `PYTHON`: converge on the behavior of the Python baseline named above.
-- `STARLARK`: intentionally preserve the current Go Starlark behavior.
-- `STARLARKX`: define a deliberate third behavior. The exact target is required.
-- `OPEN`: no direction has been accepted yet.
+For missing built-ins, do not add file access, terminal input, or Python's
+interactive help and debugger to the core. Keep those features in host-provided
+APIs. Aim to support built-ins that need no outside access when they fit the
+language features we choose. Their exact behavior stays `OPEN` until we decide
+it; being host-free is not enough reason to add a new language feature.
+Existing host-controlled features such as `print` and `load` are unchanged.
+Classes and exceptions will remain unsupported. Built-ins that depend on them
+are not candidates for addition. Programs can still use host-provided objects;
+ordinary errors still stop evaluation and are reported to the host.
 
-A decision also records how the behavior is exposed:
+Each decision chooses one direction:
 
-- `DEFAULT`: the target becomes normal StarlarkX behavior.
-- `OPTION`: the target requires an explicit per-file or dialect option.
-- `HOST`: the embedding application chooses the behavior or exposed capability.
+- `PYTHON`: match the Python version named above for the behavior in that row.
+- `STARLARK`: keep the current Go Starlark behavior.
+- `STARLARKX`: choose different behavior or a mix of Python and Starlark rules.
+  The row must say exactly what we want.
+- `OPEN`: we have not decided yet.
 
-Direction and exposure are independent. For example, Python semantics may be
-available through an `OPTION` while the default remains Starlark-compatible.
-The implementation state is measured against the selected target:
+Each row also says how the behavior is enabled:
 
-- `YES`: the target behavior is fully implemented.
-- `PARTIAL`: some target behavior exists, but the observable contract is
-  incomplete.
-- `NO`: the target behavior is not implemented.
-- `-`: no target exists yet because the direction is `OPEN`.
+- `DEFAULT`: normal StarlarkX behavior.
+- `OPTION`: requires a file or dialect option.
+- `HOST`: controlled by the application running StarlarkX.
 
-The implementation state records current capability, not scheduling or progress;
-delivery planning remains outside this document.
+These are separate choices. A Python behavior can require an option rather than
+become the default. The implementation column says how much of the chosen
+behavior works today:
 
-Every incompatibility, restriction, omission, and dialect control currently
-cataloged below has a row in this register. A newly discovered area must be
-added here as `OPEN` in the same change that adds it to the inventory. While a
-row is `OPEN`, its exposure, implementation state, target, and rationale are `-`
-because none has been accepted. Use the inventory label in the area name and
-state the observable target precisely when resolving it. If members of an
-aggregate area need different directions, split that area into separate rows
-before resolving any of them.
+- `YES`: all of it.
+- `PARTIAL`: some of it.
+- `NO`: none of it.
+- `-`: we have not chosen a behavior yet.
+
+This column is not a schedule or a measure of work in progress.
+
+Each difference listed below needs a row in this register. Add newly found
+differences as `OPEN`, with `-` in the remaining columns until we decide.
+Use the same name in the register and the comparison tables. Describe the chosen
+behavior clearly enough to check whether it works. Split a row if it bundles
+features that need separate decisions.
+
+**Signature notation:** `/` marks preceding parameters as positional-only;
+`*` marks following parameters as keyword-only.
 
 | Area | Direction | Exposure | Implemented | Target behavior | Rationale |
 | --- | --- | --- | --- | --- | --- |
 | Execution / Core execution model | `STARLARK` | `DEFAULT` | `YES` | Keep the core deterministic and hermetic; external effects exist only when the host exposes them. | Preserve reproducible evaluation and safe embedding for configuration workloads. |
-| Execution / Host boundary | `STARLARK` | `HOST` | `YES` | Let the embedding application define predeclared names, value types, modules, loading, printing, cancellation, and thread-local state. | Keep host integration as the explicit extension seam instead of standardizing a Python-like process environment. |
+| Execution / Host boundary | `STARLARK` | `HOST` | `YES` | Let the embedding application define predeclared names, value types, modules, loading, printing, cancellation, and thread-local state. | Let the host choose what the language can access instead of giving every program Python's process access. |
 | Execution / Module finalization | `STARLARK` | `DEFAULT` | `YES` | Recursively freeze every value reachable from module globals after successful initialization. | Keep loaded modules cacheable and safely shareable across parallel evaluations. |
 | Execution / Parallelism | `STARLARK` | `HOST` | `YES` | Allow independent host-created Starlark threads to run in parallel while exposing no user-level concurrency syntax. | Preserve parallel module evaluation without introducing shared mutable language-level concurrency. |
 | Execution / Error propagation | `STARLARK` | `DEFAULT` | `YES` | Abort evaluation on a dynamic error and return its backtrace to the host; provide no language-level catch mechanism. | Keep configuration failures simple and prevent error handling from becoming ordinary control flow. |
 | Execution / Undefined names | `STARLARK` | `DEFAULT` | `YES` | Reject names with no statically known binding, including names in dead code and uncalled functions. | Preserve early diagnostics and reliable static tooling. |
 | Execution / Whole-file global scope | `STARLARK` | `DEFAULT` | `YES` | Let a top-level binding shadow the corresponding predeclared name throughout the file, including before the binding executes. | Keep a name's static binding independent of textual execution position. |
 | Execution / Global assignment | `STARLARK` | `DEFAULT` | `YES` | Permit each top-level name to be bound once in the default dialect; reject rebinding and top-level augmented assignment. | Keep module definitions easy to locate, read, and analyze. |
-| Execution / Top-level control flow | `STARLARK` | `DEFAULT` | `YES` | Reject top-level `if`, `for`, and `while` in the default dialect. | Keep module initialization linear and global definitions statically evident. |
-| Execution / Recursion | `STARLARK` | `DEFAULT` | `YES` | Reject direct and mutual recursive calls unless an explicit dialect option enables them. | Keep default execution bounded and discourage computation-heavy configuration code. |
-| Execution / `while` | `STARLARK` | `DEFAULT` | `YES` | Reject `while` unless an explicit dialect option enables it. | Preserve finite iteration as the default execution model. |
+| Execution / Top-level control flow | `STARLARK` | `DEFAULT` | `YES` | Reject top-level `if`, `for`, and `while` in the default dialect. | Keep module initialization easy to follow and top-level definitions easy to find. |
+| Execution / Recursion | `STARLARK` | `DEFAULT` | `YES` | Reject direct and mutual recursive calls unless an explicit dialect option enables them. | Reject recursive calls by default; let the host enable them when needed. |
+| Execution / `while` | `STARLARK` | `DEFAULT` | `YES` | Reject `while` unless an explicit dialect option enables it. | Require an explicit option for loops whose condition might never become false. |
 | Execution / Nonlocal/global writes | `STARLARK` | `DEFAULT` | `YES` | Provide no `global` or `nonlocal` declarations; assignment binds in the current function while enclosing mutable values may still be changed. | Keep lexical assignment rules simple and make outer-scope mutation explicit through shared values. |
 | Execution / Module loading | `STARLARK` | `HOST` | `YES` | Keep top-level `load` statements with literal module and export names, explicit imports of non-underscore-prefixed values into file-local bindings, and host-defined module resolution through `Thread.Load`; provide no Python `import` statements or dynamic import built-in. | Preserve statically visible dependencies and let embedding applications define a hermetic module graph without exposing Python's process-wide import system. |
 | Values / Booleans and numbers | `STARLARK` | `DEFAULT` | `YES` | Keep `bool` distinct from numeric types; require explicit `int` or `float` conversion before numeric use. | Preserve Starlark's type clarity rather than adopting Python's historical `bool`-as-`int` relationship. |
@@ -99,7 +108,7 @@ before resolving any of them.
 | Values / Other bytes/text conversion | `OPEN` | - | - | - | - |
 | Values / Float NaN | `OPEN` | - | - | - | - |
 | Values / Float overflow parsing | `OPEN` | - | - | - | - |
-| Values / Duplicate dictionary literals | `OPEN` | - | - | - | - |
+| Values / Duplicate dictionary literals | `STARLARK` | `DEFAULT` | `YES` | Keep duplicate keys in explicit dictionary literals as errors, using StarlarkX equality and hashing. Duplicate checking for planned dictionary display unpacking is tracked separately below. Do not change dictionary comprehensions or explicit updates. | Catch conflicting entries instead of silently discarding a value. Use `update` when replacement is intended. |
 | Values / Mutation while iterating | `OPEN` | - | - | - | - |
 | Values / Frozen values | `OPEN` | - | - | - | - |
 | Values / Set order | `OPEN` | - | - | - | - |
@@ -112,84 +121,124 @@ before resolving any of them.
 | Values / Runtime type query | `OPEN` | - | - | - | - |
 | Values / Public `hash` | `OPEN` | - | - | - | - |
 | Values / Object identity | `OPEN` | - | - | - | - |
-| Calls / Argument evaluation with unpacking | `OPEN` | - | - | - | - |
+| Calls / Argument evaluation with unpacking | `STARLARK` | `DEFAULT` | `YES` | Evaluate the function expression first, then argument expressions from left to right as written, including expressions after `*` and `**`. Keep existing unpacking and binding behavior. Any future expansion of call syntax must preserve this expression order; whether to add that syntax is a separate decision. | Reading a call from left to right should tell you which argument expression runs first. Do not move starred positional expressions ahead of earlier named arguments. |
 | Calls / Multiple unpackings in calls | `OPEN` | - | - | - | - |
+| Calls / `map` strict option | `OPEN` | - | - | - | - |
 | Calls / Built-in keyword support | `OPEN` | - | - | - | - |
 | Calls / `sorted` signature | `STARLARKX` | `DEFAULT` | `YES` | Use `sorted(iterable, /, *, key=None, reverse=False)`. Require one positional iterable and named options. With `key=None`, compare elements directly; otherwise require a callable and call it once per element. Require a bool for `reverse`. Check both option types even for empty input. Read the input into a new list and keep equal-key elements in their original order. Use StarlarkX iteration and comparison rules, and keep the source iterator active until sorting finishes. | Allow familiar calls such as `sorted(items, key=None)` without changing StarlarkX type checks or mutation rules. |
-| Calls / `min`/`max` | `STARLARKX` | `DEFAULT` | `YES` | Use Python's iterable and variadic call forms, keyword-only `key=None` and `default`, iterable-only `default`, lazy key invocation, and first-wins ties while retaining Starlark iteration and comparison semantics. | Combine Python's familiar call contract with the deliberately preserved Starlark value model. |
+| Calls / `min`/`max` | `STARLARKX` | `DEFAULT` | `YES` | Accept an iterable or several positional values. Allow named `key=None` and, only in the iterable form, `default`. Call the key only when processing an element. Return the first item when values tie. Keep Starlark iteration and comparison rules. | Support familiar ways to select a minimum or maximum without changing how Starlark values compare. |
 | Calls / `print` formatting | `PYTHON` | `DEFAULT` | `YES` | Convert each object with `str`, join with keyword-only `sep`, and append keyword-only `end`; accept `None` as the default for either option. | Match Python's textual formatting contract, including partial lines and custom terminators. |
 | Calls / `print` destination and flushing | `STARLARK` | `HOST` | `YES` | Deliver each complete formatted text fragment through `Thread.Print`, with standard error as the fallback; provide no `file` or `flush` parameters. | Keep output effects controlled by the embedding host rather than exposing Python's process I/O model. |
 | Calls / Text percent formatting | `PYTHON` | `DEFAULT` | `YES` | Support mapping keys, all conversion flags, fixed and dynamic width/precision, ignored length modifiers, and Python's text-string conversion set for available values. | Match the established `%` formatting grammar while leaving the distinct binary `bytes % values` operation to the bytes model decision. |
 | Calls / Brace formatting (`str.format`, `str.format_map`, `format`) | `PYTHON` | `DEFAULT` | `YES` | Support attribute and item field traversal, `!s`/`!r`/`!a`, one-level nested fields, and the standard format specification for available scalar value types. | Provide Python's shared brace-formatting model behind all three interfaces while keeping locale and user-defined type protocols outside the core value model. |
 | Calls / Float parsing protocols | `OPEN` | - | - | - | - |
-| Calls / Extensibility | `OPEN` | - | - | - | - |
-| Syntax / Adjacent string literals | `OPEN` | - | - | - | - |
+| Calls / Extensibility | `STARLARK` | `HOST` | `YES` | Keep custom value types in Go host code. Host values may provide fields, methods, calls, truth tests, hashing, comparisons, iteration, and operators through existing interfaces. | Allow host integration without adding language-level classes. |
+| Syntax / Adjacent string literals | `STARLARK` | `DEFAULT` | `YES` | Reject adjacent string literals; require `+` for concatenation. | A missing comma between strings should be an error, not silently join two values. |
 | Syntax / Chained comparisons | `PYTHON` | `DEFAULT` | `YES` | Accept chains such as `a < b <= c`, evaluate each operand at most once, and short-circuit from left to right with Python semantics. | Support expected Python syntax while preserving the single evaluation of intermediate operands that an `and` rewrite cannot guarantee. |
-| Syntax / Unparenthesized singleton tuples | `OPEN` | - | - | - | - |
-| Syntax / Trailing commas | `OPEN` | - | - | - | - |
-| Syntax / Assignment | `OPEN` | - | - | - | - |
+| Syntax / Unparenthesized singleton tuples | `STARLARK` | `DEFAULT` | `YES` | Require parentheses for a one-element tuple: `(value,)`, not `value,`. | A stray comma should not silently change a scalar into a tuple. |
+| Syntax / Trailing commas | `STARLARK` | `DEFAULT` | `YES` | Keep current comma rules: allow trailing commas in calls and bracketed displays, but reject them in unparenthesized tuple expressions and loop/comprehension targets. | Allow a comma after the last item in a multiline call or collection without making a stray comma create a tuple. |
+| Syntax / Chained assignment | `STARLARK` | `DEFAULT` | `YES` | Reject `a = b = value`; require separate assignments. | `a = b = []` can look like two lists, but both names share one. |
+| Syntax / Starred assignment targets | `STARLARKX` | `DEFAULT` | `NO` | Allow `first, *rest = items` in assignments, loops, and comprehensions. Each target list may have one starred target, including inside nested targets. Put the remaining elements in a new list; fail if there are too few for the other targets. Without a star, still require an exact match. Keep StarlarkX iteration, name binding, and mutation checks. | Let the programmer explicitly accept extra elements without changing ordinary unpacking. |
 | Syntax / List slice assignment | `STARLARKX` | `DEFAULT` | `YES` | Allow `items[start:stop:step] = values` with integer or `None` bounds. Clip out-of-range bounds as Python does, allow positive and negative steps, resize for step 1, and require matching lengths for other steps. Evaluate the right side before the target and collect its elements before changing the list, so self-assignment is safe and other references see the update. Reject frozen or actively iterated lists, boolean bounds, string replacements without an iterable view, non-list targets, and augmented slice assignment such as `items[:] += values`. Block changes to the destination while host code supplies replacement elements. | Support `items[:] = replacement` while keeping existing list safety rules. Leave augmented assignment and `del` for separate decisions. |
 | Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Allow `obj.load`, `obj.load(...)`, and assignments to `obj.load` when the object supports them. Keep `load` reserved elsewhere. Do not change the `load` statement or allow other keywords after a dot. | Let host APIs use names such as `json.load` without changing module loading. |
-| Syntax / Display unpacking | `OPEN` | - | - | - | - |
-| Syntax / List and dictionary comprehensions | `OPEN` | - | - | - | - |
-| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Allow `{x for x in items if condition}` when `FileOptions.Set` is enabled, including nested loops and filters. Build the set immediately, without an intermediate list, and keep loop variables local to the comprehension. Keep StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Do not add set literals or generators. | Add a shorter way to build sets without changing how their elements behave. |
+| Syntax / List and tuple display unpacking | `STARLARKX` | `DEFAULT` | `NO` | Allow `[*a, *b]` and `(*a, *b)`, with ordinary elements between unpackings. Evaluate and expand entries from left to right using StarlarkX iterables; strings still require an iterable view. Build a new collection rather than modify the inputs. | Provide a clear way to combine lists or tuples. |
+| Syntax / Set display unpacking | `STARLARKX` | `OPTION` | `NO` | With `FileOptions.Set`, allow `{*a, *b}` with ordinary elements between unpackings. Evaluate and expand entries from left to right using StarlarkX iteration, equality, hashing, and insertion order. | Use the same collection-combining syntax for sets. |
+| Syntax / Dictionary display unpacking | `STARLARKX` | `DEFAULT` | `NO` | Allow `{**a, **b}` with explicit entries between unpackings. Accept StarlarkX iterable mappings and insert entries into a new dictionary from left to right. Reject duplicate keys across all entries and unpackings using StarlarkX equality and hashing. Do not modify the inputs. | Catch duplicate keys instead of silently overwriting values. Use `update` when overwriting is intended. |
+| Syntax / List and dictionary comprehensions | `STARLARKX` | `DEFAULT` | `YES` | Keep list and dictionary comprehensions that build their results immediately, with nested loops, filters, and local loop variables. Use StarlarkX iteration, equality, hashing, and mutation rules. In dictionary comprehensions, later values still replace earlier values for equal keys. | Keep the current way to build collections with loops and filters. |
+| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Allow `{x for x in items if condition}` when `FileOptions.Set` is enabled, including nested loops and filters. Build the set immediately, without an intermediate list, and keep loop variables local to the comprehension. Keep StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Set displays and generators are separate decisions. | Add a shorter way to build sets without changing how their elements behave. |
 | Syntax / Generator expressions | `OPEN` | - | - | - | - |
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Allow `else` on `for` and `while`. Run it when the iterable runs out or the condition becomes false, including when the body never runs. Skip it when `break` exits that loop. | Make it easy to handle a search that finishes without finding a match. |
-| Syntax / Function parameters | `OPEN` | - | - | - | - |
+| Syntax / Positional-only function parameters | `PYTHON` | `DEFAULT` | `NO` | Allow `/` in function and lambda parameter lists with Python's placement and argument-binding rules. Parameters before `/` cannot be supplied by keyword; a keyword with the same name may instead go into `**kwargs`. Leave default values, scope, and value behavior unchanged. | Let function authors require positional arguments where names should not be part of the calling interface. |
+| Syntax / Function decorators | `STARLARK` | `DEFAULT` | `YES` | Keep `@decorator` syntax unsupported. Wrap functions through explicit calls and assignments instead. | Make it clear when code calls a wrapper and replaces a function. |
+| Syntax / Type parameters | `STARLARK` | `DEFAULT` | `YES` | Keep type-parameter lists such as `def f[T](x)` unsupported. | Do not add generic type syntax without a type system to support it. |
 | Syntax / Numeric separators | `PYTHON` | `DEFAULT` | `YES` | Allow underscores between digits and immediately after `0b`, `0o`, or `0x`, as Python does. Accept `1_000`, `0x_ff`, and `1.2_5e1_0`; reject forms such as `1__0`, `1_`, and `1e_2`. This decision covers underscore placement only, not numeric ranges, `int`/`float` string conversions, or imaginary literals. | Make long numbers easier to read. |
 | Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Match Python's other numeric literal forms, including imaginary literals such as `2j`. Track underscores in the separate numeric-separators row. | Keep the remaining literal work separate from digit grouping, which is already implemented. |
-| Syntax / String escapes | `OPEN` | - | - | - | - |
-| Syntax / Formatting literals | `OPEN` | - | - | - | - |
-| Syntax / Loading | `OPEN` | - | - | - | - |
-| Syntax / Top-level suite | `OPEN` | - | - | - | - |
-| Statements / Classes and object model | `OPEN` | - | - | - | - |
-| Statements / Exceptions | `OPEN` | - | - | - | - |
-| Statements / Assert statement | `OPEN` | - | - | - | - |
+| Syntax / String escapes | `STARLARK` | `DEFAULT` | `YES` | Keep unknown escapes as errors, the current string and bytes escape ranges, and raw strings for literal backslashes. Do not add named Unicode escapes. | Catch mistyped escapes instead of silently preserving them; raw strings already express literal backslashes. |
+| Syntax / F-string interpolation | `STARLARKX` | `DEFAULT` | `NO` | Allow `f"Hello {name}"` with single, double, or triple quotes. Each field must contain one variable name, optionally surrounded by spaces. Look up names normally and convert their values to text from left to right using StarlarkX's normal string conversion. Allow `{{` and `}}` for literal braces and ordinary string escapes in the text. Reject empty or unmatched braces and anything beyond a name inside a field: calls, calculations, attribute access, indexing, `!r`, format options, or debug `=`. Do not combine `f` with raw or bytes prefixes. | Insert values without putting calculations inside strings. This does not make the result safe to use as a shell command, SQL query, or HTML. |
+| Syntax / Template string literals | `STARLARK` | `DEFAULT` | `YES` | Keep `t`-prefixed template strings and template objects unsupported. | Inserting values into a string does not need a separate template object. |
+| Syntax / Loading | `STARLARK` | `HOST` | `YES` | Keep top-level `load` statements with literal module and export names. Let the host resolve modules. Do not allow dynamic calls to `load`; attribute names such as `json.load` remain a separate feature. | Make dependencies readable without running the file. |
+| Syntax / Top-level suite | `STARLARK` | `DEFAULT` | `YES` | Keep top-level control flow and reassignment behind their existing file options; top-level `while` also requires `While`. Do not change option defaults. | Keep module initialization simple by default, with the same options to allow more. |
+| Statements / Classes and object model | `STARLARK` | `DEFAULT` | `YES` | Keep classes, inheritance, metaclasses, descriptors, and properties unsupported. Programs may still use built-in values and objects supplied by the host. | Do not add Python's class system. |
+| Statements / Exceptions | `STARLARK` | `DEFAULT` | `YES` | Keep `try`, `except`, `else` on `try`, `finally`, `raise`, and `except*` unsupported. Do not expose exception classes, exception instances, or exception groups. Keep `fail` and ordinary evaluation errors, which stop execution and are reported to the host. | Keep errors fatal to the evaluation rather than letting programs raise or catch exceptions. |
+| Statements / Assert statement | `STARLARK` | `DEFAULT` | `YES` | Keep `assert` available as an ordinary name rather than a statement keyword. | Keep existing assertion helpers working and avoid reserving their name. |
 | Statements / Context managers | `OPEN` | - | - | - | - |
-| Statements / Deletion | `OPEN` | - | - | - | - |
-| Statements / Python imports | `OPEN` | - | - | - | - |
-| Statements / Outer-scope declarations | `OPEN` | - | - | - | - |
+| Statements / Collection deletion | `STARLARKX` | `DEFAULT` | `NO` | Allow `del items[i]`, `del items[start:stop:step]`, and `del mapping[key]` for lists and dictionaries. Use existing index, slice-bound, key equality, and hashing rules. Reject out-of-range list indices, missing dictionary keys, frozen collections, and collections being iterated. Change the existing collection rather than create a replacement. | Make removing a list slice or dictionary entry straightforward while keeping existing mutation checks. |
+| Statements / Name and attribute deletion | `STARLARK` | `DEFAULT` | `YES` | Keep `del name` and `del obj.attribute` unsupported. | Do not let deletion make an assigned name become unbound or add a separate host operation for deleting attributes. |
+| Statements / Python imports | `STARLARK` | `HOST` | `YES` | Keep Python `import` and `from` statements unsupported; use the existing host-controlled `load` mechanism. | Follow the already-selected module-loading policy rather than add a second import system. |
+| Statements / Outer-scope declarations | `STARLARK` | `DEFAULT` | `YES` | Keep `global` and `nonlocal` unsupported. Assignments bind within the current function; existing rules still allow explicit mutation of shared containers. | Keep the effect of assigning a name local and easy to follow. |
 | Statements / Generators | `OPEN` | - | - | - | - |
 | Statements / Async syntax | `OPEN` | - | - | - | - |
 | Statements / Structural pattern matching | `OPEN` | - | - | - | - |
-| Statements / Type aliases and annotations | `OPEN` | - | - | - | - |
+| Statements / Type aliases | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `type` alias statement unsupported; `type` remains an ordinary name. | Do not add type aliases without support for using them. |
+| Statements / Annotations | `STARLARK` | `DEFAULT` | `YES` | Keep variable, parameter, and return annotations unsupported. | Do not accept type declarations that the language neither checks nor otherwise uses. |
 | Expressions / Identity operators | `OPEN` | - | - | - | - |
-| Expressions / Assignment expressions | `OPEN` | - | - | - | - |
-| Expressions / Set displays | `OPEN` | - | - | - | - |
-| Expressions / Iterable unpacking | `OPEN` | - | - | - | - |
+| Expressions / Assignment expressions | `STARLARK` | `DEFAULT` | `YES` | Keep `:=` unsupported; use assignment statements. | Keep binding a name separate from testing or computing a value. |
+| Expressions / Set displays | `STARLARKX` | `OPTION` | `NO` | Allow non-empty set displays such as `{1, 2}` when `FileOptions.Set` is enabled, without calling the `set` name. Evaluate elements from left to right and use StarlarkX equality, hashing, and insertion order. Keep `{}` as an empty dictionary; starred entries are tracked separately. | Make sets easier to write while keeping `{}` unambiguous. |
+| Expressions / Unparenthesized iterable unpacking | `STARLARK` | `DEFAULT` | `YES` | Keep starred expressions outside bracketed displays and call arguments unsupported, as in `return *items,`. Starred assignment targets are a separate decision. | Require brackets or parentheses so the resulting collection is clear. |
 | Expressions / Complex numbers and `Ellipsis` | `OPEN` | - | - | - | - |
 | Expressions / Matrix multiplication | `OPEN` | - | - | - | - |
 | Expressions / Iterator protocol | `OPEN` | - | - | - | - |
-| Expressions / Python object protocol | `OPEN` | - | - | - | - |
+| Expressions / Python object protocol | `STARLARK` | `HOST` | `YES` | Do not add Python's class-based special methods such as `__getattr__`, `__iter__`, or `__enter__`. Keep the existing Go interfaces for host-defined values. | Host objects can support operations without introducing Python's object system. |
 | Expressions / Runtime introspection objects | `OPEN` | - | - | - | - |
 | Expressions / Immutable collection counterparts | `OPEN` | - | - | - | - |
-| Builtins / `sum` | `STARLARKX` | `DEFAULT` | `YES` | Provide `sum(iterable, /, start=0)`, accepting `start` positionally or by name, rejecting string and bytes starts, returning `start` unchanged for an empty iterable, and otherwise applying ordinary StarlarkX `+` from left to right. | Provide Python's familiar accumulation interface while preserving StarlarkX boolean, arithmetic, sequence, iteration, and host-defined value semantics. |
+| Builtins / `sum` | `STARLARKX` | `DEFAULT` | `YES` | Provide `sum(iterable, /, start=0)`, accepting `start` positionally or by name, rejecting string and bytes starts, returning `start` unchanged for an empty iterable, and otherwise applying ordinary StarlarkX `+` from left to right. | Add `sum` without changing how `+` or iteration works for StarlarkX values, including values supplied by the host. |
 | Builtins / `ascii` | `STARLARKX` | `DEFAULT` | `YES` | Provide `ascii(object, /)` by escaping every non-ASCII code point in the ordinary StarlarkX representation with `\x`, `\u`, or `\U` escapes and lowercase hexadecimal digits, using the same conversion as formatting's `!a`. | Provide Python's ASCII-safe representation helper while preserving StarlarkX representations and host-defined value strings. |
 | Builtins / Integer base formatting | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `bin(integer)`, `oct(integer)`, and `hex(integer)` for StarlarkX integers, with lowercase digits, Python's prefixes, and a negative sign before the prefix; reject booleans and values requiring Python's `__index__` protocol. | Add familiar integer formatting helpers while preserving the distinct Boolean type and omitting Python object protocols. |
 | Builtins / `callable` | `STARLARKX` | `DEFAULT` | `YES` | Provide `callable(object, /)` and return true exactly when the value implements StarlarkX's `Callable` interface. | Expose the runtime's existing callability rule without introducing Python classes or `__call__` lookup. |
-| Builtins / `divmod` | `STARLARKX` | `DEFAULT` | `YES` | Provide `divmod(x, y, /)` by evaluating ordinary StarlarkX `x // y` followed by `x % y` and returning both results as a tuple. | Add Python's convenience operation while preserving StarlarkX arithmetic, Boolean separation, errors, and host-defined binary operations. |
-| Builtins / `pow` | `STARLARKX` | `DEFAULT` | `YES` | Provide `pow(base, exp, mod=None)` with positional or named parameters; support non-negative integer powers with exact results up to 1,048,576 bits, Python's real-float NaN, infinity, signed-zero, zero-to-negative error, and overflow behavior, and integer modular powers including negative exponents and moduli; reject booleans, non-numeric values, zero moduli, non-invertible negative modular exponents, and negative bases with fractional exponents because complex values are absent. | Provide Python's native numeric and modular algorithms while preserving StarlarkX's bounded-operation goals, number model, and omission of complex and special-method protocols. |
-| Builtins / `round` | `STARLARKX` | `DEFAULT` | `YES` | Provide `round(number, ndigits=None)` with positional or named parameters for integers and floats, decimal round-half-even behavior, integer results when `ndigits` is omitted or `None`, same-type results when it is an integer, signed float zero, and Python's NaN, infinity, and extreme-digit behavior; reject booleans and special-method delegation. | Provide Python's predictable decimal rounding for native numbers while preserving StarlarkX's Boolean separation and closed numeric model. |
-| Builtins / Other missing Python built-ins | `OPEN` | - | - | - | - |
-| Methods / List method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`; make `copy` shallow, make in-place mutators return `None`, and make `sort` stable with keyword-only `key=None` and `reverse=False`, one key call per item, ordinary StarlarkX `<`, strict Boolean `reverse`, and replacement only after successful key evaluation and comparison. Mutators reject frozen lists and lists with active iterators. | Provide Python's familiar complete list method surface while preserving StarlarkX equality, ordering, call typing, freezing, and mutation-safety rules. |
-| Methods / Dictionary `copy` | `STARLARKX` | `DEFAULT` | `YES` | Return a new mutable shallow dictionary copy with the source's insertion order and shared keys and values, whether the source dictionary is mutable or frozen. | Provide Python's familiar shallow-copy operation while preserving StarlarkX's frozen published values and enabling a mutable locally owned outer dictionary. |
+| Builtins / `divmod` | `STARLARKX` | `DEFAULT` | `YES` | Provide `divmod(x, y, /)` by evaluating ordinary StarlarkX `x // y` followed by `x % y` and returning both results as a tuple. | Return both arithmetic results without changing what `//` and `%` accept or how they work. |
+| Builtins / `pow` | `STARLARKX` | `DEFAULT` | `YES` | Provide `pow(base, exp, mod=None)` with positional or named parameters; support non-negative integer powers with exact results up to 1,048,576 bits, Python's real-float NaN, infinity, signed-zero, zero-to-negative error, and overflow behavior, and integer modular powers including negative exponents and moduli; reject booleans, non-numeric values, zero moduli, non-invertible negative modular exponents, and negative bases with fractional exponents because complex values are absent. | Support powers and modular arithmetic for existing numbers, with a size limit on exact results. Do not add complex numbers or Python special methods. |
+| Builtins / `round` | `STARLARKX` | `DEFAULT` | `YES` | Provide `round(number, ndigits=None)` with positional or named parameters for integers and floats, decimal round-half-even behavior, integer results when `ndigits` is omitted or `None`, same-type results when it is an integer, signed float zero, and Python's NaN, infinity, and extreme-digit behavior; reject booleans and special-method delegation. | Use Python's rounding rules for integers and floats without treating booleans as numbers or calling Python special methods. |
+| Builtins / `__import__` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's dynamic import built-in unsupported. Use the existing host-controlled `load` mechanism. | Do not add Python's module search and loading system to the core. |
+| Builtins / `aiter` | `OPEN` | - | - | - | - |
+| Builtins / `anext` | `OPEN` | - | - | - | - |
+| Builtins / `breakpoint` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's debugger entry point unsupported in the core. | Debugger and terminal access belong to the host. |
+| Builtins / `bytearray` | `OPEN` | - | - | - | - |
+| Builtins / `classmethod` | `STARLARK` | `DEFAULT` | `YES` | Keep `classmethod` unsupported. | There are no language-level classes to receive the method. |
+| Builtins / `compile` | `OPEN` | - | - | - | - |
+| Builtins / `complex` | `OPEN` | - | - | - | - |
+| Builtins / `delattr` | `STARLARK` | `DEFAULT` | `YES` | Keep attribute deletion by name unsupported, as already decided for `del obj.attribute`. | Do not add a second way to perform an operation the language deliberately leaves out. |
+| Builtins / `eval` | `OPEN` | - | - | - | - |
+| Builtins / `exec` | `OPEN` | - | - | - | - |
+| Builtins / `filter` | `STARLARKX` | `DEFAULT` | `NO` | Provide `filter(function, iterable, /)` and return a new list immediately. Accept a callable or `None`. Keep each original item whose function result is truthy; with `None`, test the item itself. Preserve input order and use StarlarkX truth, iteration, and mutation rules. Callback errors stop evaluation. | Add a convenient way to select items without introducing lazy execution or single-use results. |
+| Builtins / `frozenset` | `OPEN` | - | - | - | - |
+| Builtins / `globals` | `OPEN` | - | - | - | - |
+| Builtins / `help` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's interactive help system unsupported in the core. Hosts may provide their own documentation tools. | Console interaction and Python's documentation and module lookup do not belong in the core. |
+| Builtins / `id` | `OPEN` | - | - | - | - |
+| Builtins / `input` | `STARLARK` | `DEFAULT` | `YES` | Keep terminal-input reading unsupported in the core. | Programs should receive input through the host rather than read from the terminal themselves. |
+| Builtins / `isinstance` | `OPEN` | - | - | - | - |
+| Builtins / `issubclass` | `STARLARK` | `DEFAULT` | `YES` | Keep `issubclass` unsupported. | Classes and inheritance are unsupported. |
+| Builtins / `iter` | `OPEN` | - | - | - | - |
+| Builtins / `locals` | `OPEN` | - | - | - | - |
+| Builtins / `map` | `STARLARKX` | `DEFAULT` | `NO` | Provide `map(function, iterable, /, *iterables)` and return a new list immediately. Require a callable and at least one iterable. Pass one item from each input to the function for each result, preserving order and stopping at the shortest input. Use StarlarkX iteration and mutation rules; callback errors stop evaluation. The optional `strict` behavior is a separate decision. | Add a convenient way to transform items, consistent with the lists returned by `enumerate`, `zip`, and `reversed`. |
+| Builtins / `memoryview` | `OPEN` | - | - | - | - |
+| Builtins / `next` | `OPEN` | - | - | - | - |
+| Builtins / `object` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `object` constructor and base class unsupported. | Use existing values and host objects without adding a class hierarchy. |
+| Builtins / `open` | `STARLARK` | `DEFAULT` | `YES` | Keep file and file-descriptor access through `open` unsupported in the core. | Let the host choose whether and how programs can access files. |
+| Builtins / `property` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `property` built-in unsupported. Host objects may still provide attributes through existing Go interfaces. | Do not add class properties or descriptors. |
+| Builtins / `setattr` | `OPEN` | - | - | - | - |
+| Builtins / `slice` | `OPEN` | - | - | - | - |
+| Builtins / `staticmethod` | `STARLARK` | `DEFAULT` | `YES` | Keep `staticmethod` unsupported. | Ordinary functions work without a class wrapper. |
+| Builtins / `super` | `STARLARK` | `DEFAULT` | `YES` | Keep `super` unsupported. | There is no class inheritance order to search for methods. |
+| Builtins / `vars` | `OPEN` | - | - | - | - |
+| Methods / List method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose `append`, `clear`, `copy`, `count`, `extend`, `index`, `insert`, `pop`, `remove`, `reverse`, and `sort`; make `copy` shallow, make in-place mutators return `None`, and make `sort` stable with keyword-only `key=None` and `reverse=False`, one key call per item, ordinary StarlarkX `<`, strict Boolean `reverse`, and replacement only after successful key evaluation and comparison. Mutators reject frozen lists and lists with active iterators. | Provide the same method names as Python, but keep StarlarkX comparisons, strict argument types, and checks against changing frozen or actively iterated lists. |
+| Methods / Dictionary `copy` | `STARLARKX` | `DEFAULT` | `YES` | Return a new mutable shallow dictionary copy with the source's insertion order and shared keys and values, whether the source dictionary is mutable or frozen. | Let programs copy a frozen dictionary and edit the copy without changing the original. |
 | Methods / Dictionary `fromkeys` | `OPEN` | - | - | - | - |
-| Methods / Set method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose Python's complete named set instance-method surface; make `copy` return a new mutable shallow set; let `difference`, `difference_update`, `intersection`, and `intersection_update` accept zero or more iterable operands; make `isdisjoint` short-circuit and `symmetric_difference_update` accept one iterable; deduplicate symmetric-difference operands; and make the three added mutators return `None` while rejecting frozen sets and sets with active iterators. All methods use StarlarkX iterability, equality, hashing, and insertion/operation order. | Provide Python's familiar complete set method API and core algorithms while preserving StarlarkX's value model, non-iterable strings, deterministic order, frozen published values, and mutation-safety rules. |
+| Methods / Set method surface | `STARLARKX` | `DEFAULT` | `YES` | Expose Python's complete named set instance-method surface; make `copy` return a new mutable shallow set; let `difference`, `difference_update`, `intersection`, and `intersection_update` accept zero or more iterable operands; make `isdisjoint` short-circuit and `symmetric_difference_update` accept one iterable; deduplicate symmetric-difference operands; and make the three added mutators return `None` while rejecting frozen sets and sets with active iterators. All methods use StarlarkX iterability, equality, hashing, and insertion/operation order. | Provide the same set methods as Python. Keep StarlarkX equality, hashing, order, non-iterable strings, and checks against changing frozen or actively iterated sets. |
 | Methods / String alignment, zero-fill, and tab expansion | `STARLARKX` | `DEFAULT` | `YES` | Expose `center(width, fillchar=" ", /)`, `ljust(width, fillchar=" ", /)`, `rjust(width, fillchar=" ", /)`, `zfill(width, /)`, and `expandtabs(tabsize=8)` with Python's padding distribution, sign handling, tab stops, and line resets. Widths and columns count UTF-8 bytes, padding fill characters must be exactly one byte, and `tabsize` may be positional or named. | Add familiar Python text-layout operations while keeping their measurements coherent with Starlark's byte-based `len`, indexing, slicing, and offsets. |
 | Methods / String `casefold` and `swapcase` | `OPEN` | - | - | - | - |
 | Methods / String `isascii` | `PYTHON` | `DEFAULT` | `YES` | Return true for an empty string or a string containing only bytes in U+0000 through U+007F, and false otherwise. | Match Python's encoding-independent ASCII query; every all-ASCII Starlark string is valid UTF-8. |
-| Methods / String `isdecimal`, `isnumeric`, and `isprintable` | `STARLARKX` | `DEFAULT` | `YES` | Use Python's predicate definitions with the Unicode character assignments and properties supplied by the active Go toolchain. Return false for invalid UTF-8. Preserve Python's empty-string results: false for `isdecimal` and `isnumeric`, true for `isprintable`. | Provide familiar Unicode predicates while following Go's current Unicode support and giving byte-fragment strings deterministic non-text behavior. |
+| Methods / String `isdecimal`, `isnumeric`, and `isprintable` | `STARLARKX` | `DEFAULT` | `YES` | Use Python's predicate definitions with the Unicode character assignments and properties supplied by the active Go toolchain. Return false for invalid UTF-8. Preserve Python's empty-string results: false for `isdecimal` and `isnumeric`, true for `isprintable`. | Use Go's Unicode data for these character checks, and return false for strings that are not valid UTF-8. |
 | Methods / String `isidentifier` | `STARLARKX` | `DEFAULT` | `YES` | Return true exactly for non-empty strings with StarlarkX lexical identifier shape: a Go-Unicode letter or underscore followed by Go-Unicode letters, ASCII digits, or underscores. Return false for invalid UTF-8. Test lexical shape only, so keywords such as `def` return true. | Make the predicate answer whether text has the shape accepted by the StarlarkX scanner rather than importing Python's broader XID grammar. |
 | Methods / String `encode` | `OPEN` | - | - | - | - |
 | Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
-| Dialect / `Set` | `STARLARKX` | `OPTION` | `YES` | Require `FileOptions.Set` for both the built-in `set` name and set comprehensions. An explicit `FileOptions{}` disables both; `Set: true` enables both. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable comprehensions. | Use the existing set option for the new syntax. Keep the existing API defaults and rules for resolving the built-in name. |
-| Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep Go Starlark's bounded default and explicit opt-in for potentially unbounded loops. |
+| Dialect / `Set` | `STARLARKX` | `OPTION` | `PARTIAL` | Require `FileOptions.Set` for the built-in `set` name, set comprehensions, and planned set displays, including starred entries. An explicit `FileOptions{}` disables them; `Set: true` enables them. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable set syntax. Displays remain unimplemented. | Use one existing option for set syntax without changing API defaults or built-in name resolution. |
+| Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Require the host to enable `while`, since its condition might never become false. |
 | Dialect / `TopLevelControl` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.TopLevelControl`: false rejects top-level `if`, `for`, and `while`, while true permits them, subject to `While` for top-level `while`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep module initialization linear by default while retaining the upstream host-controlled extension. |
 | Dialect / `GlobalReassign` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.GlobalReassign`: false enforces one top-level binding per name, while true permits reassignment and retains the existing top-level binding-resolution behavior. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep static single-assignment as the default without changing the upstream compatibility option. |
-| Dialect / `Recursion` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.Recursion`: false rejects direct and mutual recursive calls, while true disables that check. Legacy APIs continue deriving it from `resolve.AllowRecursion`. | Keep bounded non-recursive execution as the default and preserve upstream's explicit escape hatch. |
+| Dialect / `Recursion` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.Recursion`: false rejects direct and mutual recursive calls, while true disables that check. Legacy APIs continue deriving it from `resolve.AllowRecursion`. | Keep recursion disabled by default and preserve the existing option to enable it. |
 | Dialect / `LoadBindsGlobally` | `STARLARK` | `OPTION` | `YES` | Preserve the deprecated upstream `FileOptions.LoadBindsGlobally`: false gives `load` file-local bindings, while true gives it global bindings; legacy APIs continue deriving it from `resolve.LoadBindsGlobally`. | Retain upstream source and host API compatibility without promoting or expanding the deprecated behavior. |
 
 ## What is already Python-like
@@ -222,7 +271,7 @@ The shared core is substantial:
 
 ### Execution, modules, and names
 
-| Area | Current Starlark behavior | Python behavior | Kind |
+| Area | Current StarlarkX behavior | Python behavior | Kind |
 | --- | --- | --- | --- |
 | Core execution model | The core is designed for deterministic and hermetic evaluation. File, network, environment, clock, randomness, and process access exist only if the host exposes them. | The built-in and standard-library environment exposes process I/O and other nondeterministic facilities. | Divergence / smaller environment |
 | Host boundary | The embedding Go application chooses predeclared names, value types, modules, printing, loading, cancellation, and thread-local state. | The runtime and import system provide a much larger standardized environment. | Addition |
@@ -238,13 +287,13 @@ The shared core is substantial:
 | Nonlocal/global writes | There are no `global` or `nonlocal` declarations. An assignment in a function always creates or updates that function's local binding. Enclosing mutable objects can still be mutated. | `global` and `nonlocal` can redirect assignment to an outer binding. | Omission |
 | Module loading | `load("path", "name", alias="export")` is top-level-only, uses literal strings, imports explicit exported values, rejects underscore-prefixed exports, and binds names in a file-local scope. Loaded values are frozen. | `import`/`from` resolve packages and modules, bind module objects or names in global/local scopes, support dynamic import APIs, and leave module state mutable. | Addition replacing an omission |
 
-These rules follow Starlark's configuration-language goals: deterministic
-results, safe parallel loading, simple static tooling, and visibly unique
-module definitions. They are not incidental parser gaps.
+These restrictions help make configuration files predictable, safe to share
+after loading, and easier to check before running. They are deliberate choices,
+not just missing parser support.
 
 ### Values and collections
 
-| Area | Current Starlark behavior | Python behavior | Kind |
+| Area | Current StarlarkX behavior | Python behavior | Kind |
 | --- | --- | --- | --- |
 | Booleans and numbers | `bool` is distinct from `int`: `True == 1` is false, and `True + 1` or `True < 2` is an error. Explicit `int(True)` and `float(True)` work. | `bool` is an `int` subclass: those expressions are true, `2`, and true. | Divergence |
 | Text model | A `string` is a byte sequence conventionally containing UTF-8 text. It is indexed as bytes: `len("\u03a9") == 2`, and indexing returns a one-byte string that may not be valid UTF-8. | `str` is a sequence of Unicode code points; `len("\u03a9") == 1`, and indexing returns `"\u03a9"`. | Divergence |
@@ -275,9 +324,9 @@ module definitions. They are not incidental parser gaps.
 
 ### Calls, formatting, and built-ins
 
-| Area | Current Starlark behavior | Python behavior | Kind |
+| Area | Current StarlarkX behavior | Python behavior | Kind |
 | --- | --- | --- | --- |
-| Argument evaluation with unpacking | Ordinary positional and named arguments are evaluated first, followed by the single `*args`, then the single `**kwargs`. For `f(id(1), x=id(2), *[id(3)])`, effects occur in order 1, 2, 3. | Python 3 evaluates the unpacked positional expression before keyword values in this form: 1, 3, 2. | Divergence |
+| Argument evaluation with unpacking | Evaluates argument expressions in written order under the current call grammar: ordinary positional and named arguments, then `*args`, then `**kwargs`. If `mark` records and returns its argument, `f(mark(1), x=mark(2), *[mark(3)])` records 1, 2, 3. | Evaluates the starred positional expression before keyword values in this form, recording 1, 3, 2. | Divergence |
 | Multiple unpackings in calls | At most one `*args` and one `**kwargs` are allowed. `*args` must follow all ordinary positional and named arguments, and no named argument may follow it. | Multiple `*` and `**` unpackings and more flexible interleaving are supported, subject to ordering and duplicate-name rules. | Restriction |
 | Built-in keyword support | Unless documented otherwise, Starlark built-ins accept positional arguments only. Boolean parameters generally require an actual `bool`, not merely a truthy value. | Many Python built-ins have keyword-only parameters and commonly use truth testing where specified. | Restriction / divergence |
 | `sorted` signature | Accepts one positional iterable and named `key=None` and `reverse=False` options. `key=None` compares elements directly; other keys must be callable. `reverse` must be a bool. Both types are checked even for empty input. Uses StarlarkX comparisons and keeps the source iterator active through sorting, blocking source mutation. | Same argument layout and `None` default. Tests the truth of `reverse` rather than requiring a bool; an invalid key may go unnoticed for empty input. | Aligned argument layout / typing and mutation divergence |
@@ -299,20 +348,26 @@ already removed.
 | Adjacent string literals | No implicit concatenation: `"a" "b"` is a parse error; use `"a" + "b"`. |
 | Unparenthesized singleton tuples | `x = value,` is rejected; write `x = (value,)`. Multi-element unparenthesized tuples remain valid in selected contexts. |
 | Trailing commas | A trailing comma is rejected in unparenthesized tuple expressions and loop/comprehension targets where Python accepts it. It is accepted in calls and bracketed displays. |
-| Assignment | There is no chained assignment (`a = b = 0`) or starred target (`a, *rest = xs`). Compound targets must match the source sequence exactly. |
+| Chained assignment | `a = b = value` is not supported. |
+| Starred assignment targets | Targets such as `first, *rest = items` are not supported. Ordinary compound targets must match the source sequence exactly. |
 | List slice assignment | `items[start:stop] = values` can grow or shrink a list. With a step other than 1, replacement lengths must match. Collects replacement elements before changing the original list; other references to that list see the change. Rejects frozen or actively iterated lists, boolean bounds, strings without an iterable view, non-list targets, and augmented slice assignment. Python allows list mutation during iteration, boolean bounds, string iterables, and augmented slice assignment. |
 | `load` in attribute position | Allows `obj.load`, `obj.load(...)`, and assignments to `obj.load` when the object supports them. Keeps `load` reserved elsewhere. Python allows `load` as an ordinary name anywhere. Both languages reject keywords such as `class` after a dot. |
-| Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
+| List and tuple display unpacking | `[*xs]` and `(*xs,)` are not supported. |
+| Set display unpacking | `{*items}` is not supported. |
+| Dictionary display unpacking | `{**mapping}` is not supported. |
 | List and dictionary comprehensions | Eager list and dictionary comprehensions support nested `for` and `if` clauses. Their values and iteration follow StarlarkX rules. |
 | Set comprehensions | With `Set` enabled, `{x for x in items}` builds a set immediately. Loop variables stay local to the comprehension. Uses StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Does not build an intermediate list or call the `set` name. Python has the same syntax but different set and value rules. |
 | Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
 | Loop clauses | As in Python, `else` on a `for` or `while` runs when the iterable runs out or the condition becomes false, even if the body never runs. It does not run when `break`, `return`, or an error exits the loop. Existing loop options still apply. |
-| Function parameters | No positional-only `/` marker, annotations, return annotations, type parameters, or decorators. |
+| Positional-only function parameters | No `/` marker in function or lambda parameter lists. |
+| Function decorators | `@decorator` syntax is not supported. |
+| Type parameters | Function and class type-parameter lists are not supported. |
 | Numeric separators | Allows Python-style underscores in integer and decimal float literals, such as `1_000` and `1.2_5`. Underscores do not change the value. Invalid forms such as `1__0` are errors. |
 | Numeric literals | No complex or imaginary literals such as `2j`. Binary and octal integers must fit in a signed 64-bit integer; decimal and hexadecimal integers can be arbitrarily large. Float literals that overflow are errors. |
 | String escapes | Unknown escapes are errors rather than retained literally. String `\x` and octal escapes are restricted to ASCII; bytes escapes above 255 are errors. Python's string and bytes escape ranges differ. Named Unicode escapes (`\N{...}`) are absent. |
-| Formatting literals | There are no f-strings or template string literals. |
+| F-string interpolation | `f`-prefixed strings are not supported. |
+| Template string literals | `t`-prefixed strings and template objects are not supported. |
 | Loading | `load` is top-level-only and all module/export names must be literals; it cannot be used as a dynamic function. |
 | Top-level suite | Control flow and reassignment require dialect options even though the same suites are accepted inside functions. |
 
@@ -327,14 +382,18 @@ already removed.
 - `assert` as a statement. This Go implementation permits `assert` as an
   ordinary identifier.
 - `with` and context managers.
-- `del`.
+- Collection deletion: `del items[i]`, `del items[start:stop:step]`, and
+  `del mapping[key]` are not yet supported.
+- Name and attribute deletion: `del name` and `del obj.attribute` are not
+  supported.
 - `import`, `from ... import`, relative/package import semantics, and
   `__future__` statements. Starlark's `load` is a different construct.
 - `global` and `nonlocal`.
 - `yield`, generator functions, and `yield from`.
 - `async def`, `await`, `async for`, and `async with`.
 - Structural pattern matching (`match`/`case`).
-- Python's `type` alias statement and annotation-only assignment.
+- Python's `type` alias statement.
+- Variable, parameter, and return annotations.
 
 The scanner reserves `as`, `async`, `await`, `class`, `del`, `except`,
 `finally`, `from`, `global`, `import`, `is`, `nonlocal`, `raise`, `try`, `with`,
@@ -348,7 +407,8 @@ keywords `match`, `case`, and `type` are also ordinary identifiers here.
 - Assignment expressions (`:=`).
 - Set displays such as `{1, 2}`; `{}` is a dictionary. Set comprehensions and
   generator expressions are tracked separately above.
-- General iterable unpacking in displays and assignment targets.
+- Unparenthesized iterable unpacking, such as `return *items,`. Display unpacking
+  and starred assignment targets are tracked separately above.
 - Complex numbers, `Ellipsis`, and complex literals.
 - The matrix multiplication operator `@`.
 - User-visible iterator objects and `iter`/`next`; Starlark iteration is exposed
@@ -362,8 +422,7 @@ keywords `match`, `case`, and `type` are also ordinary identifiers here.
 
 ### Built-ins and libraries
 
-The universal Starlark environment is deliberately small. At this baseline it
-contains:
+StarlarkX currently provides these built-in names:
 
 ```text
 None True False
@@ -375,13 +434,56 @@ repr reversed round set sorted str sum tuple type zip
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
 predeclared names before evaluation.
 
-Python built-ins related to the object model, dynamic execution, I/O, iteration,
-exceptions, and reflection are absent. The remaining missing Python 3.14
-built-ins include `__import__`, `aiter`, `anext`, `breakpoint`, `bytearray`,
-`classmethod`, `compile`, `complex`, `delattr`, `eval`, `exec`, `filter`,
-`frozenset`, `globals`, `help`, `id`, `input`, `isinstance`, `issubclass`, `iter`,
-`locals`, `map`, `memoryview`, `next`, `object`, `open`, `property`, `setattr`,
-`slice`, `staticmethod`, `super`, and `vars`.
+The following 32 functions and types from Python 3.14's
+[Built-in Functions reference](https://docs.python.org/3.14/library/functions.html)
+are missing. Each has its own row in the decision register. This list does not
+include exception classes, constants, or the extra interactive helpers installed
+by Python's `site` module outside that reference. Exception classes such as
+`ValueError` and `TypeError` will remain unsupported under the exceptions
+decision; ordinary evaluation errors do not create language-visible exceptions.
+
+The last column explains what we need to decide before adding each one. It is
+not a promise to implement them. `Unsupported` means excluded from the core;
+the host can still expose its own APIs.
+
+| Built-in | What it does in Python | StarlarkX decision or dependency |
+| --- | --- | --- |
+| `__import__` | Imports a module by name. | Unsupported; keep host-controlled `load`. |
+| `aiter` | Gets an asynchronous iterator. | Needs a decision on async iteration. |
+| `anext` | Gets the next value from an asynchronous iterator when awaited. | Needs async iteration and a rule for reaching the end. |
+| `breakpoint` | Enters the debugger. | Unsupported; leave debugging to the host. |
+| `bytearray` | Creates mutable bytes. | Needs a mutable byte type and rules for freezing and iteration. |
+| `classmethod` | Makes a method receive its class as the first argument. | Unsupported; classes are not part of the language. |
+| `compile` | Turns source text into a code or syntax-tree object. | Needs code objects and a decision on compiling code at runtime. It does not inherently require file access. |
+| `complex` | Creates a complex number. | Depends on complex-number support; the numeric-literal decision alone does not settle this constructor. |
+| `delattr` | Deletes an attribute by name. | Unsupported, matching the decision against attribute deletion. |
+| `eval` | Evaluates an expression supplied as text or a code object. | Needs a decision on runtime code evaluation and access to names. Host-free does not make evaluating untrusted text safe. |
+| `exec` | Executes statements supplied as text or a code object. | Needs a decision on runtime code execution and scope. It is not automatically approved just because it can run without I/O. |
+| `filter` | Returns an iterator over values that pass a test. | Planned: return a list immediately, using StarlarkX truth tests. `None` keeps truthy items. Not implemented. |
+| `frozenset` | Creates an immutable, hashable set. | Needs an immutable set type; a frozen StarlarkX set is still unhashable. |
+| `globals` | Returns the current module's global namespace as a dictionary. | Decide whether and how programs may inspect or change globals. |
+| `help` | Shows documentation or starts interactive help. | Unsupported; leave documentation tools and console interaction to the host. |
+| `id` | Returns a value identifying an object's identity. | Depends on the object-identity decision. No OS access is inherently required. |
+| `input` | Reads a line from standard input, optionally printing a prompt. | Unsupported; input must come through the host. |
+| `isinstance` | Checks whether a value is an instance of a type or one of several types. | Still open for checking built-in and host-defined value types. It would not include Python classes or inheritance. |
+| `issubclass` | Checks whether a class inherits from another class. | Unsupported; classes and inheritance are not part of the language. |
+| `iter` | Gets an iterator, or repeatedly calls a function until it returns a sentinel value. | Needs language-visible iterators and rules for both call forms. |
+| `locals` | Returns names in the current local scope. | Depends on whether and how local variables can be inspected. |
+| `map` | Returns an iterator that applies a function to items from one or more iterables. | Planned: return a list immediately and stop at the shortest input. Not implemented. Python 3.14's optional `strict` check for unequal input lengths remains a separate open decision. |
+| `memoryview` | Provides a view of another object's buffer without copying it. | Needs buffer support and rules for shared data, writes, and freezing. |
+| `next` | Gets the next item from an iterator, optionally returning a default at the end. | Needs language-visible iterators and a rule for exhaustion without a default. |
+| `object` | Creates a basic object and serves as the base of Python's class hierarchy. | Unsupported; existing values and host objects do not need Python's base class. |
+| `open` | Opens a file or wraps a file descriptor. | Unsupported; file access belongs to host APIs. |
+| `property` | Defines an attribute through getter, setter, and deleter functions. | Unsupported; keep attributes supplied by host objects instead of class properties. |
+| `setattr` | Assigns an attribute by name. | Could use the existing host-value attribute-assignment support. Decide accepted objects and argument rules; it does not itself require OS access. |
+| `slice` | Creates a value containing slice bounds and a step. | Needs slice values and rules for using them with existing indexing and slicing. |
+| `staticmethod` | Stores a function on a class without automatically passing an instance or class when it is called. | Unsupported; use ordinary functions. |
+| `super` | Looks up methods using a class's inheritance order. | Unsupported; classes and inheritance are not part of the language. |
+| `vars` | Returns an object's attribute dictionary, or local names when called without an argument. | Needs decisions on attribute dictionaries and local-scope inspection. |
+
+We want functions to be able to return iterators eventually, but that design is
+still open. For now, `map` and `filter` will be list-returning conveniences.
+Adding iterator support later will not automatically change these return types.
 
 Built-in type methods are also a subset rather than a compatibility layer:
 
@@ -450,30 +552,9 @@ document:
 - Go-specific string and bytes escape behavior.
 - Actual range membership, indexing/slicing types, and arithmetic operands.
 
-Implementation behavior and tests remain authoritative if future changes cause
-new drift. The command's `-recursion` help string is still stale, but the
-language specification now describes its actual effect.
-
-## Compatibility work by cost
-
-A practical extension plan can group work by architectural depth:
-
-1. **Change local semantics**: Remaining text-model and bytes behavior, NaN
-   semantics, eager/lazy return types, builtin signatures, and argument
-   evaluation order. These changes are localized conceptually but can
-   break Starlark code.
-2. **Extend parser and evaluator**: literal concatenation,
-   richer unpacking, augmented slice assignment, and f-strings.
-3. **Add new runtime subsystems**: exceptions, generators/iterators and generator
-   expressions, classes and Python's object protocol, imports/module objects,
-   context managers, async execution and comprehensions, and broad
-   standard-library compatibility. These are not
-   incremental syntax additions; they alter the evaluator and value model.
-
-A compatibility mode is safer than changing all defaults globally. Several
-Starlark divergences are guarantees relied upon by embedding applications,
-particularly freezing, deterministic ordering, static resolution, bounded
-execution, and fatal errors.
+If the code, tests, and specification disagree, check which one needs fixing.
+The command's `-recursion` help string is still stale; the specification describes
+what the flag actually does.
 
 ## Sources
 

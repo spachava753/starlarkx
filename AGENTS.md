@@ -32,6 +32,9 @@ Read any nested `AGENTS.md` before editing files in that directory.
 - Treat observable semantics as design decisions, not incidental fixes.
 - For an `OPEN` compatibility area, obtain or establish a direction before
   implementing it.
+- Add useful Python features, but keep Starlark checks that catch likely
+  mistakes. Explain why we keep or change a behavior in the compatibility
+  register; matching Python is not enough reason on its own.
 - Implement the smallest coherent behavior that satisfies the selected target.
 - Verify Python-targeted behavior against authoritative CPython documentation,
   source, and tests rather than memory alone.
