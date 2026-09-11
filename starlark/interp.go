@@ -414,6 +414,13 @@ loop:
 			result = stack[sp-1]
 			break loop
 
+		case compile.SETSLICE:
+			err = setSlice(stack[sp-4], stack[sp-3], stack[sp-2], stack[sp-1], stack[sp-5])
+			sp -= 5
+			if err != nil {
+				break loop
+			}
+
 		case compile.SETINDEX:
 			z := stack[sp-1]
 			y := stack[sp-2]

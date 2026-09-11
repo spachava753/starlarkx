@@ -714,6 +714,122 @@ func outOfRange(i, n int, x Value) error {
 	}
 }
 
+// setSlice implements plain list slice assignment. No host slice-mutation
+// protocol is implied by the read-only Sliceable interface.
+func setSlice(x, lo, hi, stepValue, rhs Value) error {
+	list, ok := x.(*List)
+	if !ok {
+		return fmt.Errorf("%s value does not support slice assignment", x.Type())
+	}
+	if err := list.checkMutable("assign to slice of"); err != nil {
+		return err
+	}
+	n := list.Len()
+	step := 1
+	if stepValue != None {
+		var err error
+		step, err = boundedSliceInt(stepValue, max(2, n+1))
+		if err != nil {
+			return fmt.Errorf("invalid slice step: %s", err)
+		}
+		if step == 0 {
+			return fmt.Errorf("zero is not a valid slice step")
+		}
+	}
+	start, end := 0, n
+	lower, upper := 0, n
+	if step < 0 {
+		start, end = n-1, -1
+		lower, upper = -1, n-1
+	}
+	for i, bound := range []Value{lo, hi} {
+		if bound == None {
+			continue
+		}
+		index, err := boundedSliceInt(bound, n+1)
+		if err != nil {
+			return fmt.Errorf("invalid slice index: %s", err)
+		}
+		if index < 0 {
+			index += n
+		}
+		index = min(max(index, lower), upper)
+		if i == 0 {
+			start = index
+		} else {
+			end = index
+		}
+	}
+
+	// Lock while invoking host iterators; snapshotting also makes self-assignment safe.
+	replacement, err := sliceReplacement(list, rhs)
+	if err != nil {
+		return err
+	}
+	if err := list.checkMutable("assign to slice of"); err != nil {
+		return err
+	}
+	if step == 1 {
+		end = max(start, end)
+		remaining := n - (end - start)
+		if len(replacement) > maxAlloc-remaining {
+			return fmt.Errorf("excessive slice assignment")
+		}
+		elems := make([]Value, 0, remaining+len(replacement))
+		elems = append(elems, list.elems[:start]...)
+		elems = append(elems, replacement...)
+		elems = append(elems, list.elems[end:]...)
+		list.elems = elems
+		return nil
+	}
+
+	count := 0
+	if step > 0 && start < end {
+		count = 1 + (end-1-start)/step
+	} else if step < 0 && start > end {
+		count = 1 + (start-1-end)/(-step)
+	}
+	if len(replacement) != count {
+		return fmt.Errorf("cannot assign sequence of size %d to extended slice of size %d", len(replacement), count)
+	}
+	for i, value := range replacement {
+		list.elems[start+i*step] = value
+	}
+	return nil
+}
+
+// Clamp arbitrary-size integers before converting to machine indices.
+func boundedSliceInt(value Value, limit int) (int, error) {
+	x, ok := value.(Int)
+	if !ok {
+		return 0, fmt.Errorf("got %s, want int", value.Type())
+	}
+	i, fits := x.Int64()
+	if !fits {
+		return x.Sign() * limit, nil
+	}
+	return int(min(max(i, -int64(limit)), int64(limit))), nil
+}
+
+func sliceReplacement(dst *List, rhs Value) ([]Value, error) {
+	dst.itercount++
+	defer func() { dst.itercount-- }()
+	iter := Iterate(rhs)
+	if iter == nil {
+		return nil, fmt.Errorf("slice assignment requires an iterable, got %s", rhs.Type())
+	}
+	defer iter.Done()
+	var elems []Value
+	var value Value
+	for iter.Next(&value) {
+		if len(elems) >= maxAlloc {
+			return nil, fmt.Errorf("excessive slice assignment")
+		}
+		elems = append(elems, value)
+	}
+	return elems, nil
+}
+
 // setIndex implements x[y] = z.
 func setIndex(x, y, z Value) error {
 	switch x := x.(type) {

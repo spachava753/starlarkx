@@ -2607,7 +2607,8 @@ AssignStmt = Expression '=' Expression .
 The expression on the left-hand side is called a _target_.  The
 simplest target is the name of a variable, but a target may also have
 the form of an index expression, to update the element of a list or
-dictionary, or a dot expression, to update the field of an object:
+dictionary, a slice expression, to replace a portion of a list, or a dot
+expression, to update the field of an object:
 
 ```python
 k = 1
@@ -2635,6 +2636,47 @@ a, b = {"a": 1, "b": 2}
 The same process for assigning a value to a target expression is used
 in `for` loops and in comprehensions.
 
+#### List slice assignment
+
+`items[start:stop:step] = values` replaces selected elements of a list without
+rebinding `items`. Other references to the list observe the changed contents.
+Only lists support slice assignment; this does not add a host slice-mutation
+protocol or make tuples, strings, or bytes mutable.
+
+The right-hand expression is evaluated first, then the list expression and each
+explicit bound from left to right, exactly once. Bounds must be integers or
+`None`, not booleans. Omitted bounds and `None` select the usual slice defaults.
+Negative bounds count from the end, and arbitrarily large bounds are clipped to
+the list. The step defaults to one, may be negative, and must not be zero.
+
+For a step of one, the replacement may have any length, allowing insertion,
+removal, or resizing. A stop before the normalized start denotes an empty
+region, so replacement inserts at the start. For every other step, the number
+of replacement elements must equal the number of selected positions, including
+zero for an empty selection.
+
+The replacement must be a StarlarkX iterable. Strings require an explicit
+iterable view. Replacement elements are collected into a snapshot before any
+contents are changed, making self-assignment safe. Failed validation leaves the
+list contents unchanged. Evaluation of target, bound, or right-hand expressions
+may have its own side effects; those effects are not rolled back.
+
+Frozen lists and lists with active iterators reject slice assignment, including
+empty replacements. The destination is locked against mutation while consuming
+the replacement iterable, and its mutability is checked again afterward because
+host code may freeze it. Slice assignment does not freeze or copy the elements.
+
+```python
+items = [0, 1, 2, 3]
+alias = items
+items[1:3] = [8]                 # alias now contains [0, 8, 3]
+items[::-1] = items              # alias now contains [3, 8, 0]
+items[:] = []                    # alias now contains []
+```
+
+This support is for plain assignment. Augmented slice assignment such as
+`items[:] += values` and `del` statements remain unsupported. Reading a slice
+retains its existing bounds-conversion rules.
 
 ### Augmented assignments
 

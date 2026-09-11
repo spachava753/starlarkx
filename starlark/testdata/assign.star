@@ -2,6 +2,86 @@
 
 # This is a "chunked" file: each "---" effectively starts a new file.
 
+# List slice assignment preserves the list object and snapshots replacements.
+load("assert.star", "assert", "freeze")
+
+xs = [0, 1, 2, 3, 4]
+alias = xs
+xs[1:3] = (8, 9, 10)
+assert.eq(alias, [0, 8, 9, 10, 3, 4])
+xs[4:2] = [7]
+assert.eq(xs, [0, 8, 9, 10, 7, 3, 4])
+xs[-3:] = []
+assert.eq(xs, [0, 8, 9, 10])
+xs[::2] = [1, 2]
+assert.eq(xs, [1, 8, 2, 10])
+xs[::-1] = xs
+assert.eq(xs, [10, 2, 8, 1])
+xs[:] = xs
+assert.eq(xs, [10, 2, 8, 1])
+xs[1:2] = xs
+assert.eq(xs, [10, 10, 2, 8, 1, 8, 1])
+xs[:] = range(4)
+assert.eq(xs, [0, 1, 2, 3])
+xs[None:None:None] = [4, 5]
+assert.eq(xs, [4, 5])
+xs[-(1 << 100):1 << 100] = [1, 2, 3]
+assert.eq(xs, [1, 2, 3])
+xs[::1 << 100] = [9]
+xs[::- (1 << 100)] = [8]
+assert.eq(xs, [9, 2, 8])
+xs[:] = []
+assert.eq(alias, [])
+xs[100:200] = [6]
+assert.eq(xs, [6])
+
+# Failure leaves contents unchanged and does not leak iteration locks.
+def replace(dst, lo, hi, step, rhs):
+    dst[lo:hi:step] = rhs
+
+def during_iteration(dst):
+    for _ in dst:
+        dst[:] = []
+
+assert.fails(lambda: replace([], None, None, 2, [1]), "extended slice of size 0")
+assert.fails(lambda: replace([], None, None, 1 << 100, [1]), "extended slice of size 0")
+assert.fails(lambda: replace(xs, None, None, 2, []), "extended slice of size 1")
+assert.eq(xs, [6])
+assert.fails(lambda: replace(xs, None, None, 0, []), "zero is not a valid slice step")
+assert.fails(lambda: replace(xs, True, None, None, []), "got bool, want int")
+assert.fails(lambda: replace(xs, None, None, 1.0, []), "got float, want int")
+assert.fails(lambda: replace(xs, None, None, None, "abc"), "requires an iterable, got string")
+assert.fails(lambda: replace(xs, None, None, None, 3), "requires an iterable, got int")
+assert.fails(lambda: replace((1,), None, None, None, []), "tuple value does not support slice assignment")
+assert.fails(lambda: replace("abc", None, None, None, []), "string value does not support slice assignment")
+assert.fails(lambda: during_iteration(xs), "list during iteration")
+xs.append(7)
+assert.eq(xs, [6, 7])
+freeze(xs)
+assert.fails(lambda: replace(xs, None, None, None, []), "frozen list")
+
+# RHS first, then target and bounds, each exactly once.
+calls = []
+ys = [0, 1, 2]
+def mark(name, value):
+    calls.append(name)
+    return value
+mark("target", ys)[mark("lo", 0):mark("hi", 2):mark("step", 1)] = mark("rhs", [8])
+assert.eq(calls, ["rhs", "target", "lo", "hi", "step"])
+assert.eq(ys, [8, 2])
+(ys[:], other) = ([3, 4], 9)
+assert.eq(ys, [3, 4])
+assert.eq(other, 9)
+
+def loop_target():
+    dst = []
+    for dst[:] in [[1], [2, 3]]:
+        pass
+    return dst
+assert.eq(loop_target(), [2, 3])
+
+---
+
 # tuple assignment
 load("assert.star", "assert")
 

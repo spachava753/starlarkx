@@ -615,6 +615,12 @@ func (r *resolver) assign(lhs syntax.Expr, isAugmented bool) {
 		r.expr(lhs.X)
 		r.expr(lhs.Y)
 
+	case *syntax.SliceExpr:
+		if isAugmented {
+			r.errorf(syntax.Start(lhs), "can't use slice expression in augmented assignment")
+		}
+		r.expr(lhs)
+
 	case *syntax.DotExpr:
 		// x.f = ...
 		r.expr(lhs.X)

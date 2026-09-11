@@ -127,7 +127,7 @@ before resolving any of them.
 | Syntax / Unparenthesized singleton tuples | `OPEN` | - | - | - | - |
 | Syntax / Trailing commas | `OPEN` | - | - | - | - |
 | Syntax / Assignment | `OPEN` | - | - | - | - |
-| Syntax / List slice assignment | `OPEN` | - | - | - | - |
+| Syntax / List slice assignment | `STARLARKX` | `DEFAULT` | `YES` | Support plain list slice assignment with Python's clipped integer/None bounds, positive and negative strides, contiguous resizing, equal-length extended replacement, self-assignment, and RHS-before-target evaluation. Consume a StarlarkX iterable into a snapshot before replacing contents, preserve the list object, and reject frozen or actively iterated destinations. Lock the destination during host iteration. Reject booleans as bounds, non-iterable strings as replacements, non-list destinations, and augmented slice assignment. | Add familiar in-place list replacement while retaining StarlarkX iteration, mutation safety, and value protocols; leave augmented assignment and deletion syntax separate. |
 | Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Accept `load` after a dot for attribute reads, calls, and assignments using ordinary host attribute protocols. Keep it reserved everywhere else, preserve the existing `load` statement, and continue rejecting other keywords as attribute names. | Allow Python-style APIs such as `json.load` without changing static module loading or broadly relaxing keyword rules. |
 | Syntax / Display unpacking | `OPEN` | - | - | - | - |
 | Syntax / Comprehensions | `OPEN` | - | - | - | - |
@@ -294,7 +294,7 @@ construct but intentionally or currently accepts less syntax.
 | Unparenthesized singleton tuples | `x = value,` is rejected; write `x = (value,)`. Multi-element unparenthesized tuples remain valid in selected contexts. |
 | Trailing commas | A trailing comma is rejected in unparenthesized tuple expressions and loop/comprehension targets where Python accepts it. It is accepted in calls and bracketed displays. |
 | Assignment | There is no chained assignment (`a = b = 0`) or starred target (`a, *rest = xs`). Compound targets must match the source sequence exactly. |
-| List slice assignment | Reading slices is supported, but assigning to a slice (`xs[1:3] = ys`) is rejected. Python lists support contiguous replacement with resizing and extended-slice replacement with matching lengths. |
+| List slice assignment | Plain list slice assignment supports contiguous resizing and equal-length extended replacement, preserving aliases and snapshotting StarlarkX iterables. Frozen or actively iterated lists, boolean bounds, scalar string replacements, non-list destinations, and augmented slice assignment are rejected. Python permits list mutation during iteration, boolean bounds, string iterables, and augmented slice assignment. |
 | `load` in attribute position | `obj.load` is accepted for attribute reads, calls, and assignments; `load` remains reserved elsewhere. Python treats `load` as an ordinary identifier everywhere. Both reject hard keywords such as `class` after a dot. |
 | Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
 | Comprehensions | Only eager list and dictionary comprehensions exist. There are no set comprehensions, generator expressions, or async comprehensions. |

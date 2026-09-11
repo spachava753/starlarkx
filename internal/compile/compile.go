@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 15
+const Version = 16
 
 type Opcode uint8
 
@@ -108,6 +108,7 @@ const (
 	SETDICT      // dict key value SETDICT      -
 	SETDICTUNIQ  // dict key value SETDICTUNIQ  -
 	APPEND       //      list elem APPEND       -
+	SETSLICE     // rhs x lo hi step SETSLICE   -
 	SLICE        //   x lo hi step SLICE        slice
 	INPLACE_ADD  //            x y INPLACE_ADD  z      where z is x+y or x.extend(y)
 	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
@@ -213,6 +214,7 @@ var opcodeNames = [...]string{
 	SETLOCALCELL: "setlocalcell",
 	SLASH:        "slash",
 	SLASHSLASH:   "slashslash",
+	SETSLICE:     "setslice",
 	SLICE:        "slice",
 	STAR:         "star",
 	TILDE:        "tilde",
@@ -287,6 +289,7 @@ var stackEffect = [...]int8{
 	SETLOCAL:     -1,
 	SLASH:        -1,
 	SLASHSLASH:   -1,
+	SETSLICE:     -5,
 	SLICE:        -3,
 	STAR:         -1,
 	TRUE:         +1,
@@ -1270,6 +1273,18 @@ func (fcomp *fcomp) assign(pos syntax.Position, lhs syntax.Expr) {
 		fcomp.emit(EXCH)
 		fcomp.setPos(lhs.Lbrack)
 		fcomp.emit(SETINDEX)
+
+	case *syntax.SliceExpr:
+		fcomp.expr(lhs.X)
+		for _, bound := range []syntax.Expr{lhs.Lo, lhs.Hi, lhs.Step} {
+			if bound != nil {
+				fcomp.expr(bound)
+			} else {
+				fcomp.emit(NONE)
+			}
+		}
+		fcomp.setPos(lhs.Lbrack)
+		fcomp.emit(SETSLICE)
 
 	case *syntax.DotExpr:
 		// x.f = rhs
