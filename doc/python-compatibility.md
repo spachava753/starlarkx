@@ -1,20 +1,21 @@
 # Python compatibility baseline
 
-This document catalogs how the Go Starlark implementation differs from Python.
-It is intended to be the baseline for deciding which Python behaviors StarlarkX
-should add.
+This document compares StarlarkX with Python. It records what works today,
+what differs, and which changes we have agreed to make.
 
 ## Scope and terminology
 
-The implementation baseline is commit
-`5395d018f003e2a08bfbca6dcb2562acee700f62` (2026-07-08). At this commit,
-StarlarkX `master`, `origin/master`, and `upstream/master` are identical. There
-are no StarlarkX-specific language changes yet.
+The comparison started from Go Starlark commit
+`5395d018f003e2a08bfbca6dcb2562acee700f62` (2026-07-08), before StarlarkX had
+its own language changes. The tables now describe the current StarlarkX code,
+not just that starting point.
 
-The Python baseline is Python 3.14.7. This catalog covers the language and the
-universal built-ins, not a function-by-function comparison with the Python
-standard library. It describes this Go implementation, including its
-implementation-specific behavior where it differs from portable Starlark.
+The Python reference version is 3.14.7. This document covers the language,
+built-ins, and their methods, not every function in Python's standard library.
+
+In function signatures, parameters before `/` must be positional. Parameters
+after `*` must be named: `sorted(items, reverse=True)`, not
+`sorted(items, None, True)`.
 
 The classifications used below are:
 
@@ -32,9 +33,9 @@ and Go-implementation extensions.
 
 ## Compatibility intent
 
-The inventory classifications above describe facts; they do not imply that
-StarlarkX should adopt Python's behavior. Policy decisions are recorded
-separately in the decision register below.
+The decision table below records the behavior we want and whether it is
+implemented. The later comparison tables describe what the code does today.
+A difference from Python does not, by itself, mean we plan to change it.
 
 Each decision chooses one semantic direction:
 
@@ -114,7 +115,7 @@ before resolving any of them.
 | Calls / Argument evaluation with unpacking | `OPEN` | - | - | - | - |
 | Calls / Multiple unpackings in calls | `OPEN` | - | - | - | - |
 | Calls / Built-in keyword support | `OPEN` | - | - | - | - |
-| Calls / `sorted` signature | `STARLARKX` | `DEFAULT` | `YES` | Provide `sorted(iterable, /, *, key=None, reverse=False)`: require exactly one positional iterable, accept `None` for direct comparison, require a callable for other keys and an actual Boolean for `reverse`, and validate these types even for empty input. Retain eager stable sorting, one key call per element, StarlarkX comparison and iteration rules, and active source-iterator protection through sorting. | Match Python's argument layout and default key while preserving StarlarkX argument typing and existing value and mutation behavior. |
+| Calls / `sorted` signature | `STARLARKX` | `DEFAULT` | `YES` | Use `sorted(iterable, /, *, key=None, reverse=False)`. Require one positional iterable and named options. With `key=None`, compare elements directly; otherwise require a callable and call it once per element. Require a bool for `reverse`. Check both option types even for empty input. Read the input into a new list and keep equal-key elements in their original order. Use StarlarkX iteration and comparison rules, and keep the source iterator active until sorting finishes. | Allow familiar calls such as `sorted(items, key=None)` without changing StarlarkX type checks or mutation rules. |
 | Calls / `min`/`max` | `STARLARKX` | `DEFAULT` | `YES` | Use Python's iterable and variadic call forms, keyword-only `key=None` and `default`, iterable-only `default`, lazy key invocation, and first-wins ties while retaining Starlark iteration and comparison semantics. | Combine Python's familiar call contract with the deliberately preserved Starlark value model. |
 | Calls / `print` formatting | `PYTHON` | `DEFAULT` | `YES` | Convert each object with `str`, join with keyword-only `sep`, and append keyword-only `end`; accept `None` as the default for either option. | Match Python's textual formatting contract, including partial lines and custom terminators. |
 | Calls / `print` destination and flushing | `STARLARK` | `HOST` | `YES` | Deliver each complete formatted text fragment through `Thread.Print`, with standard error as the fallback; provide no `file` or `flush` parameters. | Keep output effects controlled by the embedding host rather than exposing Python's process I/O model. |
@@ -127,17 +128,17 @@ before resolving any of them.
 | Syntax / Unparenthesized singleton tuples | `OPEN` | - | - | - | - |
 | Syntax / Trailing commas | `OPEN` | - | - | - | - |
 | Syntax / Assignment | `OPEN` | - | - | - | - |
-| Syntax / List slice assignment | `STARLARKX` | `DEFAULT` | `YES` | Support plain list slice assignment with Python's clipped integer/None bounds, positive and negative strides, contiguous resizing, equal-length extended replacement, self-assignment, and RHS-before-target evaluation. Consume a StarlarkX iterable into a snapshot before replacing contents, preserve the list object, and reject frozen or actively iterated destinations. Lock the destination during host iteration. Reject booleans as bounds, non-iterable strings as replacements, non-list destinations, and augmented slice assignment. | Add familiar in-place list replacement while retaining StarlarkX iteration, mutation safety, and value protocols; leave augmented assignment and deletion syntax separate. |
-| Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Accept `load` after a dot for attribute reads, calls, and assignments using ordinary host attribute protocols. Keep it reserved everywhere else, preserve the existing `load` statement, and continue rejecting other keywords as attribute names. | Allow Python-style APIs such as `json.load` without changing static module loading or broadly relaxing keyword rules. |
+| Syntax / List slice assignment | `STARLARKX` | `DEFAULT` | `YES` | Allow `items[start:stop:step] = values` with integer or `None` bounds. Clip out-of-range bounds as Python does, allow positive and negative steps, resize for step 1, and require matching lengths for other steps. Evaluate the right side before the target and collect its elements before changing the list, so self-assignment is safe and other references see the update. Reject frozen or actively iterated lists, boolean bounds, string replacements without an iterable view, non-list targets, and augmented slice assignment such as `items[:] += values`. Block changes to the destination while host code supplies replacement elements. | Support `items[:] = replacement` while keeping existing list safety rules. Leave augmented assignment and `del` for separate decisions. |
+| Syntax / `load` in attribute position | `STARLARKX` | `DEFAULT` | `YES` | Allow `obj.load`, `obj.load(...)`, and assignments to `obj.load` when the object supports them. Keep `load` reserved elsewhere. Do not change the `load` statement or allow other keywords after a dot. | Let host APIs use names such as `json.load` without changing module loading. |
 | Syntax / Display unpacking | `OPEN` | - | - | - | - |
 | Syntax / List and dictionary comprehensions | `OPEN` | - | - | - | - |
-| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Support eager `{element for target in iterable if condition ...}` with nested loops and filters, comprehension-local bindings, and direct set construction when `FileOptions.Set` is enabled. Use StarlarkX iterability, equality, hashing, insertion order, and mutation safety; preserve set-literal and generator omissions. | Add Python's concise set-building syntax without allocating an intermediate list or changing the existing value model. |
+| Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Allow `{x for x in items if condition}` when `FileOptions.Set` is enabled, including nested loops and filters. Build the set immediately, without an intermediate list, and keep loop variables local to the comprehension. Keep StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Do not add set literals or generators. | Add a shorter way to build sets without changing how their elements behave. |
 | Syntax / Generator expressions | `OPEN` | - | - | - | - |
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
-| Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Support `else` on `for` and `while`; execute it after normal exhaustion or a false condition, but skip it when `break` exits the loop. | Match Python control-flow syntax and its established distinction between normal loop completion and early termination. |
+| Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Allow `else` on `for` and `while`. Run it when the iterable runs out or the condition becomes false, including when the body never runs. Skip it when `break` exits that loop. | Make it easy to handle a search that finishes without finding a match. |
 | Syntax / Function parameters | `OPEN` | - | - | - | - |
-| Syntax / Numeric separators | `PYTHON` | `DEFAULT` | `YES` | Accept Python 3.14 underscore placement in integer and decimal floating-point literals: single separators between digits and optionally immediately after a binary, octal, or hexadecimal prefix. Reject repeated, trailing, or punctuation-adjacent separators. This row covers separator syntax, not numeric ranges, conversions from strings, or imaginary literals. | Make long numeric literals readable without changing the numeric value model. |
-| Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Accept the other Python 3.14 numeric literal forms, including imaginary literals; digit-separator placement is tracked separately. | Preserve familiar literal syntax while tracking the remaining numeric forms independently. |
+| Syntax / Numeric separators | `PYTHON` | `DEFAULT` | `YES` | Allow underscores between digits and immediately after `0b`, `0o`, or `0x`, as Python does. Accept `1_000`, `0x_ff`, and `1.2_5e1_0`; reject forms such as `1__0`, `1_`, and `1e_2`. This decision covers underscore placement only, not numeric ranges, `int`/`float` string conversions, or imaginary literals. | Make long numbers easier to read. |
+| Syntax / Numeric literals | `PYTHON` | `DEFAULT` | `PARTIAL` | Match Python's other numeric literal forms, including imaginary literals such as `2j`. Track underscores in the separate numeric-separators row. | Keep the remaining literal work separate from digit grouping, which is already implemented. |
 | Syntax / String escapes | `OPEN` | - | - | - | - |
 | Syntax / Formatting literals | `OPEN` | - | - | - | - |
 | Syntax / Loading | `OPEN` | - | - | - | - |
@@ -184,7 +185,7 @@ before resolving any of them.
 | Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
 | Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
-| Dialect / `Set` | `STARLARKX` | `OPTION` | `YES` | Preserve upstream gating of universal `set` references and additionally gate set comprehensions: an explicit zero-valued option set rejects both, while `Set: true` permits both. Legacy APIs continue deriving the value from `resolve.AllowSet`, whose default is true. Shadowing `set` does not bypass the comprehension gate. | Extend the existing host-selectable set capability to the new syntax without changing modern-versus-legacy defaults or universal-name resolution. |
+| Dialect / `Set` | `STARLARKX` | `OPTION` | `YES` | Require `FileOptions.Set` for both the built-in `set` name and set comprehensions. An explicit `FileOptions{}` disables both; `Set: true` enables both. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable comprehensions. | Use the existing set option for the new syntax. Keep the existing API defaults and rules for resolving the built-in name. |
 | Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep Go Starlark's bounded default and explicit opt-in for potentially unbounded loops. |
 | Dialect / `TopLevelControl` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.TopLevelControl`: false rejects top-level `if`, `for`, and `while`, while true permits them, subject to `While` for top-level `while`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep module initialization linear by default while retaining the upstream host-controlled extension. |
 | Dialect / `GlobalReassign` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.GlobalReassign`: false enforces one top-level binding per name, while true permits reassignment and retains the existing top-level binding-resolution behavior. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Keep static single-assignment as the default without changing the upstream compatibility option. |
@@ -279,7 +280,7 @@ module definitions. They are not incidental parser gaps.
 | Argument evaluation with unpacking | Ordinary positional and named arguments are evaluated first, followed by the single `*args`, then the single `**kwargs`. For `f(id(1), x=id(2), *[id(3)])`, effects occur in order 1, 2, 3. | Python 3 evaluates the unpacked positional expression before keyword values in this form: 1, 3, 2. | Divergence |
 | Multiple unpackings in calls | At most one `*args` and one `**kwargs` are allowed. `*args` must follow all ordinary positional and named arguments, and no named argument may follow it. | Multiple `*` and `**` unpackings and more flexible interleaving are supported, subject to ordering and duplicate-name rules. | Restriction |
 | Built-in keyword support | Unless documented otherwise, Starlark built-ins accept positional arguments only. Boolean parameters generally require an actual `bool`, not merely a truthy value. | Many Python built-ins have keyword-only parameters and commonly use truth testing where specified. | Restriction / divergence |
-| `sorted` signature | Exactly one positional iterable; keyword-only `key=None` and `reverse=False`. Non-None keys must be callable and reverse must be a bool, even for empty input. Sorting retains StarlarkX comparisons and source iteration protection. | Same argument layout and None default; reverse is truth-tested and an invalid key may go unnoticed for empty input. | Aligned argument layout / typing and mutation divergence |
+| `sorted` signature | Accepts one positional iterable and named `key=None` and `reverse=False` options. `key=None` compares elements directly; other keys must be callable. `reverse` must be a bool. Both types are checked even for empty input. Uses StarlarkX comparisons and keeps the source iterator active through sorting, blocking source mutation. | Same argument layout and `None` default. Tests the truth of `reverse` rather than requiring a bool; an invalid key may go unnoticed for empty input. | Aligned argument layout / typing and mutation divergence |
 | `min`/`max` | Support Python's iterable and variadic forms, keyword-only `key=None`, and an iterable-only `default`. The first encountered item wins ties. Values still follow Starlark's iteration and comparison rules. | Support the same call forms and selection behavior over Python's value and iterator model. | Aligned call contract / value-model divergence |
 | `sum` | Supports `sum(iterable, /, start=0)`, with `start` accepted positionally or by name. String and bytes starts are rejected, an empty iterable returns `start` unchanged, and other values are combined from left to right using ordinary StarlarkX `+`. Booleans remain non-numeric and floats receive no compensated special case. | Supports the same call forms, empty behavior, and string/bytes rejection over Python values. CPython uses specialized integer, float, and complex paths, including compensated float and complex summation. | Aligned call contract / value-model and numeric-algorithm divergence |
 | `print` | Converts each object with `str`, joins with keyword-only `sep`, and appends keyword-only `end`; either formatting option accepts `None` for its default. The complete text is delivered to the host's thread callback, and `file` and `flush` are not supported. | Uses the same textual formatting options, additionally supports `file` and `flush`, and defaults to standard output. | Restriction / divergence |
@@ -290,26 +291,26 @@ module definitions. They are not incidental parser gaps.
 
 ## Shared syntax that Starlark narrows
 
-These are not wholly missing concepts; Starlark recognizes a nearby Python
-construct but intentionally or currently accepts less syntax.
+This table compares shared syntax, including restrictions that StarlarkX has
+already removed.
 
-| Construct | Starlark restriction |
+| Construct | Current support and differences |
 | --- | --- |
 | Adjacent string literals | No implicit concatenation: `"a" "b"` is a parse error; use `"a" + "b"`. |
 | Unparenthesized singleton tuples | `x = value,` is rejected; write `x = (value,)`. Multi-element unparenthesized tuples remain valid in selected contexts. |
 | Trailing commas | A trailing comma is rejected in unparenthesized tuple expressions and loop/comprehension targets where Python accepts it. It is accepted in calls and bracketed displays. |
 | Assignment | There is no chained assignment (`a = b = 0`) or starred target (`a, *rest = xs`). Compound targets must match the source sequence exactly. |
-| List slice assignment | Plain list slice assignment supports contiguous resizing and equal-length extended replacement, preserving aliases and snapshotting StarlarkX iterables. Frozen or actively iterated lists, boolean bounds, scalar string replacements, non-list destinations, and augmented slice assignment are rejected. Python permits list mutation during iteration, boolean bounds, string iterables, and augmented slice assignment. |
-| `load` in attribute position | `obj.load` is accepted for attribute reads, calls, and assignments; `load` remains reserved elsewhere. Python treats `load` as an ordinary identifier everywhere. Both reject hard keywords such as `class` after a dot. |
+| List slice assignment | `items[start:stop] = values` can grow or shrink a list. With a step other than 1, replacement lengths must match. Collects replacement elements before changing the original list; other references to that list see the change. Rejects frozen or actively iterated lists, boolean bounds, strings without an iterable view, non-list targets, and augmented slice assignment. Python allows list mutation during iteration, boolean bounds, string iterables, and augmented slice assignment. |
+| `load` in attribute position | Allows `obj.load`, `obj.load(...)`, and assignments to `obj.load` when the object supports them. Keeps `load` reserved elsewhere. Python allows `load` as an ordinary name anywhere. Both languages reject keywords such as `class` after a dot. |
 | Display unpacking | No `[*xs]`, `(*xs,)`, `{**mapping}`, or `{*items}` forms. Star-unpacking is limited to calls and variadic parameter binding; ordinary exact-length destructuring remains available. |
 | List and dictionary comprehensions | Eager list and dictionary comprehensions support nested `for` and `if` clauses. Their values and iteration follow StarlarkX rules. |
-| Set comprehensions | With `Set` enabled, `{x for x in iterable}` builds a set eagerly using StarlarkX scope, iteration, equality, hashing, insertion order, and mutation rules. No intermediate list or call to the `set` name is made. Python provides the same eager syntax but uses its own set and value semantics. |
+| Set comprehensions | With `Set` enabled, `{x for x in items}` builds a set immediately. Loop variables stay local to the comprehension. Uses StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Does not build an intermediate list or call the `set` name. Python has the same syntax but different set and value rules. |
 | Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
-| Loop clauses | `for` and `while` support Python-style `else`: it runs on normal completion, not on `break`, return, or error. Existing dialect restrictions on loops remain. |
+| Loop clauses | As in Python, `else` on a `for` or `while` runs when the iterable runs out or the condition becomes false, even if the body never runs. It does not run when `break`, `return`, or an error exits the loop. Existing loop options still apply. |
 | Function parameters | No positional-only `/` marker, annotations, return annotations, type parameters, or decorators. |
-| Numeric separators | Integer and decimal float literals accept Python's underscore placement and ignore separators when computing values. Invalid placements are rejected. |
-| Numeric literals | Complex and imaginary literals are absent. Existing numeric range limits remain: binary and octal literals must fit a signed 64-bit integer, while decimal and hexadecimal integers may be arbitrarily large; float literal overflow is rejected. |
+| Numeric separators | Allows Python-style underscores in integer and decimal float literals, such as `1_000` and `1.2_5`. Underscores do not change the value. Invalid forms such as `1__0` are errors. |
+| Numeric literals | No complex or imaginary literals such as `2j`. Binary and octal integers must fit in a signed 64-bit integer; decimal and hexadecimal integers can be arbitrarily large. Float literals that overflow are errors. |
 | String escapes | Unknown escapes are errors rather than retained literally. String `\x` and octal escapes are restricted to ASCII; bytes escapes above 255 are errors. Python's string and bytes escape ranges differ. Named Unicode escapes (`\N{...}`) are absent. |
 | Formatting literals | There are no f-strings or template string literals. |
 | Loading | `load` is top-level-only and all module/export names must be literals; it cannot be used as a dynamic function. |
