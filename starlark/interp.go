@@ -407,6 +407,20 @@ loop:
 			iterstack[n].Done()
 			iterstack = iterstack[:n]
 
+		case compile.EXTEND:
+			list := stack[sp-2].(*List)
+			iterable, ok := stack[sp-1].(Iterable)
+			if !ok {
+				err = fmt.Errorf("got %s, want iterable in display", stack[sp-1].Type())
+				break loop
+			}
+			listExtend(list, iterable)
+			sp -= 2
+
+		case compile.LISTTOTUPLE:
+			// The display's temporary list has never escaped.
+			stack[sp-1] = Tuple(stack[sp-1].(*List).elems)
+
 		case compile.TOSTRING:
 			if _, ok := stack[sp-1].(String); !ok {
 				stack[sp-1] = String(stack[sp-1].String())

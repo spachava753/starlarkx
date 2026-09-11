@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 20
+const Version = 21
 
 type Opcode uint8
 
@@ -114,6 +114,8 @@ const (
 	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
 	MAKEDICT     //              - MAKEDICT     dict
 	MAKESET      //              - MAKESET      set
+	EXTEND       // list iterable EXTEND       -
+	LISTTOTUPLE  //          list LISTTOTUPLE  tuple
 	TOSTRING     //          value TOSTRING     string
 	SETADD       //       set elem SETADD       -
 
@@ -194,6 +196,8 @@ var opcodeNames = [...]string{
 	LT:           "lt",
 	LTLT:         "ltlt",
 	MAKESET:      "makeset",
+	EXTEND:       "extend",
+	LISTTOTUPLE:  "listtotuple",
 	TOSTRING:     "tostring",
 	SETADD:       "setadd",
 	MAKEDICT:     "makedict",
@@ -273,6 +277,8 @@ var stackEffect = [...]int8{
 	LT:           -1,
 	LTLT:         -1,
 	MAKESET:      +1,
+	EXTEND:       -2,
+	LISTTOTUPLE:  0,
 	TOSTRING:     0,
 	SETADD:       -2,
 	MAKEDICT:     +1,
@@ -1377,10 +1383,14 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		fcomp.emit1(CONSTANT, fcomp.pcomp.constantIndex(v))
 
 	case *syntax.ListExpr:
-		for _, x := range e.List {
-			fcomp.expr(x)
+		if hasStar(e.List) {
+			fcomp.sequenceDisplay(e.List)
+		} else {
+			for _, x := range e.List {
+				fcomp.expr(x)
+			}
+			fcomp.emit1(MAKELIST, uint32(len(e.List)))
 		}
-		fcomp.emit1(MAKELIST, uint32(len(e.List)))
 
 	case *syntax.CondExpr:
 		// Keep consistent with IfStmt.
@@ -1437,7 +1447,12 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		fcomp.comprehension(e, 0)
 
 	case *syntax.TupleExpr:
-		fcomp.tuple(e.List)
+		if hasStar(e.List) {
+			fcomp.sequenceDisplay(e.List)
+			fcomp.emit(LISTTOTUPLE)
+		} else {
+			fcomp.tuple(e.List)
+		}
 
 	case *syntax.DictExpr:
 		fcomp.emit(MAKEDICT)
@@ -1852,6 +1867,30 @@ func (fcomp *fcomp) args(call *syntax.CallExpr) (op Opcode, arg uint32) {
 	}
 
 	return CALL + Opcode(callmode), uint32(p<<8 | n)
+}
+
+func hasStar(elements []syntax.Expr) bool {
+	for _, element := range elements {
+		if star, ok := element.(*syntax.UnaryExpr); ok && star.Op == syntax.STAR {
+			return true
+		}
+	}
+	return false
+}
+
+func (fcomp *fcomp) sequenceDisplay(elements []syntax.Expr) {
+	fcomp.emit1(MAKELIST, 0)
+	for _, element := range elements {
+		fcomp.emit(DUP)
+		op := APPEND
+		pos := syntax.Start(element)
+		if star, ok := element.(*syntax.UnaryExpr); ok && star.Op == syntax.STAR {
+			element, op = star.X, EXTEND
+		}
+		fcomp.expr(element)
+		fcomp.setPos(pos)
+		fcomp.emit(op)
+	}
 }
 
 func (fcomp *fcomp) tuple(elems []syntax.Expr) {

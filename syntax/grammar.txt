@@ -65,7 +65,7 @@ Operand = identifier
         | int | float | string | bytes | fstring
         | ListExpr | ListComp
         | DictExpr | DictComp | SetComp
-        | '(' [Expression [',']] ')'
+        | '(' [DisplayEntries [',']] ')'
         | ('-' | '+') PrimaryExpr
         .
 
@@ -76,7 +76,9 @@ SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
 Arguments = Argument {',' Argument} .
 Argument  = Test | identifier '=' Test | '*' Test | '**' Test .
 
-ListExpr = '[' [Expression [',']] ']' .
+ListExpr = '[' [DisplayEntries [',']] ']' .
+DisplayEntries = DisplayEntry {',' DisplayEntry} .
+DisplayEntry = Test | '*' Test .
 ListComp = '[' Test {CompClause} ']'.
 
 DictExpr = '{' [Entries [',']] '}' .

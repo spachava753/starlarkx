@@ -933,6 +933,9 @@ func (p *parser) parsePrimary() Expr {
 		}
 		e := p.parseExpr(true) // allow trailing comma
 		rparen := p.consume(RPAREN)
+		if tuple, ok := e.(*TupleExpr); ok {
+			tuple.Lparen, tuple.Rparen = lparen, rparen
+		}
 		return &ParenExpr{
 			Lparen: lparen,
 			X:      e,

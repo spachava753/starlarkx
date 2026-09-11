@@ -112,6 +112,22 @@ are placed on the operand stack in reverse target order, so the compiler can
 assign targets from left to right. A nested target performs its own unpacking
 when it is reached; assignments already completed remain visible if it fails.
 
+## Collection displays
+
+Starred display entries use unary star nodes in the syntax tree. Tuple nodes
+record whether they were parenthesized, allowing the resolver to reject
+unparenthesized starred values while accepting bracketed displays. Each
+starred operand is resolved as an expression; comprehension bodies use ordinary
+expression validation.
+
+Lists and tuples without stars keep their fixed-size construction. Displays
+with stars build a temporary list. Each ordinary entry appends one value;
+each starred entry extends the list from its iterable before the next entry
+runs. Lists use a direct element copy when possible. Other iterables use an
+iterator that is released after expansion, including before a later entry
+fails. A tuple display transfers the completed temporary list's backing storage
+to a tuple. The temporary list has not escaped, so no mutable alias remains.
+
 ## Evaluator
 
 ### Data types

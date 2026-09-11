@@ -1716,7 +1716,7 @@ Operand = identifier
         | int | float | string | bytes | fstring
         | ListExpr | ListComp
         | DictExpr | DictComp | SetComp
-        | '(' [Expression] [,] ')'
+        | '(' [DisplayEntries [',']] ')'
         | ('-' | '+') PrimaryExpr
         .
 
@@ -1754,7 +1754,7 @@ constructs text from literal segments and variable values.
 ### Parenthesized expressions
 
 ```grammar {.good}
-Primary = '(' [Expression] ')'
+Primary = '(' [DisplayEntries [',']] ')'
 ```
 
 A single expression enclosed in parentheses yields the result of that expression.
@@ -1768,6 +1768,7 @@ or to override the default association of subexpressions.
 
 If the parentheses are empty, or contain a single expression followed
 by a comma, or contain two or more expressions, the expression yields a tuple.
+Parenthesized tuples also accept [display unpacking](#display-unpacking).
 
 ```python
 ()                              # (), the empty tuple
@@ -1834,7 +1835,9 @@ enclosed in square brackets, and it yields a new list object.
 An optional comma may follow the last element expression.
 
 ```grammar {.good}
-ListExpr = '[' [Expression [',']] ']' .
+ListExpr = '[' [DisplayEntries [',']] ']' .
+DisplayEntries = DisplayEntry {',' DisplayEntry} .
+DisplayEntry = Test | '*' Test .
 ```
 
 Element expressions are evaluated in left-to-right order.
@@ -1846,6 +1849,30 @@ Examples:
 [1]                     # [1], a 1-element list
 [1, 2, 3,]              # [1, 2, 3], a 3-element list
 ```
+
+### Display unpacking
+
+List and parenthesized tuple displays accept starred entries. Each `*value`
+expands a StarlarkX iterable into the new collection. Ordinary and starred
+entries may be mixed, with any number of stars.
+
+```python
+[*range(3), 3, *(4, 5)]       # [0, 1, 2, 3, 4, 5]
+(*[1, 2], 3, *[4])          # (1, 2, 3, 4)
+(*[],)                       # ()
+```
+
+Entries are evaluated from left to right. Each starred iterable is consumed
+and its iterator released before the next entry is evaluated. A non-iterable
+entry is an error and stops evaluation. Strings require an explicit iterable
+view, as in `[*text.codepoints()]`.
+
+The result is a new collection containing the original items. Expanding a list
+does not change it, and later changes to its element sequence do not change the
+result. Shared mutable items remain shared. Tuple unpacking requires parentheses
+and a comma: `(*items,)` is valid, but `(*items)` and `return *items, other` are
+errors. A comprehension body must be an ordinary expression, not a starred
+entry.
 
 ### Unary operators
 

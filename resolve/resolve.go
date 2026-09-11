@@ -669,6 +669,15 @@ func (r *resolver) assignSequence(targets []syntax.Expr, augmented bool) {
 	}
 }
 
+func (r *resolver) displayElements(elements []syntax.Expr) {
+	for _, element := range elements {
+		if star, ok := element.(*syntax.UnaryExpr); ok && star.Op == syntax.STAR {
+			element = star.X
+		}
+		r.expr(element)
+	}
+}
+
 func (r *resolver) expr(e syntax.Expr) {
 	switch e := e.(type) {
 	case *syntax.Ident:
@@ -682,9 +691,7 @@ func (r *resolver) expr(e syntax.Expr) {
 	case *syntax.Literal:
 
 	case *syntax.ListExpr:
-		for _, x := range e.List {
-			r.expr(x)
-		}
+		r.displayElements(e.List)
 
 	case *syntax.CondExpr:
 		r.expr(e.Cond)
@@ -742,8 +749,12 @@ func (r *resolver) expr(e syntax.Expr) {
 		r.pop()
 
 	case *syntax.TupleExpr:
-		for _, x := range e.List {
-			r.expr(x)
+		if e.Lparen.IsValid() {
+			r.displayElements(e.List)
+		} else {
+			for _, x := range e.List {
+				r.expr(x)
+			}
 		}
 
 	case *syntax.DictExpr:
@@ -755,7 +766,7 @@ func (r *resolver) expr(e syntax.Expr) {
 
 	case *syntax.UnaryExpr:
 		if e.Op == syntax.STAR {
-			r.errorf(e.OpPos, "starred expression is only allowed in an assignment target list")
+			r.errorf(e.OpPos, "starred expression requires a display or assignment target list")
 		}
 		r.expr(e.X)
 
