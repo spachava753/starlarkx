@@ -458,7 +458,7 @@ func divmod(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 func enumerate(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var iterable Iterable
 	var start int
-	if err := unpackPositionalArgsNoEscape("enumerate", args, kwargs, 1, &iterable, &start); err != nil {
+	if err := UnpackArgs("enumerate", args, kwargs, "iterable", &iterable, "start?", &start); err != nil {
 		return nil, err
 	}
 
@@ -2697,7 +2697,13 @@ func string_replace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 	recv := string(b.Receiver().(String))
 	var old, new string
 	count := -1
-	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 2, &old, &new, &count); err != nil {
+	if err := checkPositionalArgs(b.Name(), args, nil, 2, 3); err != nil {
+		return nil, err
+	}
+	if err := unpackPositionalArgsNoEscape(b.Name(), args[:2], nil, 2, &old, &new); err != nil {
+		return nil, err
+	}
+	if err := UnpackArgs(b.Name(), args[2:], kwargs, "count?", &count); err != nil {
 		return nil, err
 	}
 	return String(strings.Replace(recv, old, new, count)), nil
@@ -2830,7 +2836,7 @@ func string_split(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 	recv := string(b.Receiver().(String))
 	var sep_ Value
 	maxsplit := -1
-	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &sep_, &maxsplit); err != nil {
+	if err := UnpackArgs(b.Name(), args, kwargs, "sep?", &sep_, "maxsplit?", &maxsplit); err != nil {
 		return nil, err
 	}
 
@@ -2931,7 +2937,7 @@ func splitspace(s string, max int) []string {
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·splitlines
 func string_splitlines(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var keepends bool
-	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &keepends); err != nil {
+	if err := UnpackArgs(b.Name(), args, kwargs, "keepends?", &keepends); err != nil {
 		return nil, err
 	}
 	var lines []string

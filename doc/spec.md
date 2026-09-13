@@ -3598,16 +3598,16 @@ divmod(7.5, -2.0)                # (-4.0, -0.5)
 
 ### enumerate
 
-`enumerate(x)` returns a list of (index, value) pairs, each containing
-successive values of the iterable sequence x and the index of the value
-within the sequence.
+`enumerate(iterable, start=0)` returns a list of (index, value) pairs, each
+containing a successive value of `iterable` and its index. Both parameters may
+be passed positionally or by name.
 
-The optional second parameter, `start`, specifies an integer value to
-add to each index.
+The optional `start` parameter specifies an integer value to add to each index.
 
 ```python
 enumerate(["zero", "one", "two"])               # [(0, "zero"), (1, "one"), (2, "two")]
 enumerate(["one", "two"], 1)                    # [(1, "one"), (2, "two")]
+enumerate(iterable=["one", "two"], start=1)     # [(1, "one"), (2, "two")]
 ```
 
 ### fail
@@ -3718,7 +3718,8 @@ See also: `bin` and `oct`.
 
 ### int
 
-`int(x[, base])` interprets its argument as an integer.
+`int(x[, base])` interprets its argument as an integer. Both parameters may be
+passed positionally or by name. `x` is required, so `int()` is an error.
 
 If x is an `int`, the result is x.
 If x is a `float`, the result is the integer value nearest to x,
@@ -3741,6 +3742,7 @@ int("11")               # 11
 int("11", 0)            # 11
 int("11", 10)           # 11
 int("11", 2)            # 3
+int(x="11", base=2)     # 3
 int("11", 8)            # 9
 int("11", 16)           # 17
 
@@ -5268,8 +5270,9 @@ removed if S ends with `suffix`, otherwise it returns S.
 <a id='string·replace'></a>
 ### string·replace
 
-`S.replace(old, new[, count])` returns a copy of string S with all
-occurrences of substring `old` replaced by `new`. If the optional
+`S.replace(old, new, /, count=-1)` returns a copy of string S with all
+occurrences of substring `old` replaced by `new`. `old` and `new` are
+positional-only; `count` may be passed positionally or by name. If the optional
 argument `count`, which must be an `int`, is non-negative, it
 specifies a maximum number of occurrences to replace. An empty `old` matches at
 decoded code-point boundaries rather than between the bytes of a valid
@@ -5277,7 +5280,7 @@ multi-byte UTF-8 encoding.
 
 ```python
 "banana".replace("a", "o")		# "bonono"
-"banana".replace("a", "o", 2)		# "bonona"
+"banana".replace("a", "o", count=2)      # "bonona"
 ```
 
 <a id='string·rfind'></a>
@@ -5333,14 +5336,14 @@ one byte long.
 <a id='string·rsplit'></a>
 ### string·rsplit
 
-`S.rsplit([sep[, maxsplit]])` splits a string into substrings like `S.split`,
+`S.rsplit(sep=None, maxsplit=-1)` splits a string into substrings like `S.split`,
 except that when a maximum number of splits is specified, `rsplit` chooses the
-rightmost splits.
+rightmost splits. Both parameters may be passed positionally or by name.
 
 ```python
 "banana".rsplit("n")                         # ["ba", "a", "a"]
 "banana".rsplit("n", 1)                      # ["bana", "a"]
-"one two  three".rsplit(None, 1)             # ["one two", "three"]
+"one two  three".rsplit(maxsplit=1)         # ["one two", "three"]
 "".rsplit("n")                               # [""]
 ```
 
@@ -5360,8 +5363,9 @@ alternative set of Unicode code points to remove.
 <a id='string·split'></a>
 ### string·split
 
-`S.split([sep [, maxsplit]])` returns the list of substrings of S,
-splitting at occurrences of the delimiter string `sep`.
+`S.split(sep=None, maxsplit=-1)` returns the list of substrings of S,
+splitting at occurrences of the delimiter string `sep`. Both parameters may
+be passed positionally or by name. `maxsplit` must be an integer.
 
 Consecutive occurrences of `sep` are considered to delimit empty
 strings, so `'food'.split('o')` returns `['f', '', 'd']`.
@@ -5380,7 +5384,7 @@ If `maxsplit` is given and non-negative, it specifies a maximum number of splits
 ```python
 "one two  three".split()                    # ["one", "two", "three"]
 "one two  three".split(" ")                 # ["one", "two", "", "three"]
-"one two  three".split(None, 1)             # ["one", "two  three"]
+"one two  three".split(maxsplit=1)          # ["one", "two  three"]
 "banana".split("n")                         # ["ba", "a", "a"]
 "banana".split("n", 1)                      # ["ba", "ana"]
 "".split("n")                               # [""]
@@ -5430,13 +5434,12 @@ See also: `string·codepoint_ords`.
 <a id='string·splitlines'></a>
 ### string·splitlines
 
-`S.splitlines([keepends])` returns a list whose elements are the
-successive lines of S, that is, the strings formed by splitting S at
-line terminators (currently assumed to be a single newline, `\n`,
-regardless of platform).
+`S.splitlines(keepends=False)` returns a list whose elements are the
+successive lines of S, split at newline bytes (`\n`) regardless of platform.
+Other line-ending characters are not separators.
 
-The optional argument, `keepends`, is interpreted as a Boolean.
-If true, line terminators are preserved in the result, though
+The optional argument `keepends` may be passed positionally or by name and
+must be a Boolean. If true, line terminators are preserved in the result, though
 the final element does not necessarily end with a line terminator.
 
 As a special case, if S is the empty string,
@@ -5444,7 +5447,7 @@ As a special case, if S is the empty string,
 
 ```python
 "one\n\ntwo".splitlines()       # ["one", "", "two"]
-"one\n\ntwo".splitlines(True)   # ["one\n", "\n", "two"]
+"one\n\ntwo".splitlines(keepends=True)  # ["one\n", "\n", "two"]
 "".splitlines()                 # [] -- a special case
 ```
 

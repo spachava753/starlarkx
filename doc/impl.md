@@ -122,6 +122,13 @@ slots, so a matching keyword is collected in the variadic keyword dictionary
 or rejected if there is none. Defaults and missing-argument checks then fill
 or check the remaining slots, including positional-only slots.
 
+Built-ins receive the positional tuple and ordered keyword pairs without
+compiled parameter metadata. Each built-in enforces its own signature, usually
+through shared argument-unpacking helpers. Positional-only helpers reject
+keywords; mixed-argument helpers match names, detect binding collisions, and
+check required parameters and types. Built-ins with keyword-only options
+separate positional inputs from keyword pairs when applying these helpers.
+
 ## Sequence assignment
 
 The parser represents a starred target as a unary star node. The resolver
