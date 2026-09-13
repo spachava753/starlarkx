@@ -3975,9 +3975,18 @@ The `str` function applied to a `range` value yields a string of the
 form `range(10)`, `range(1, 10)`, or `range(1, 10, 2)`.
 
 The `x in y` operator, where `y` is a range, accepts an `int` or finite
-`float`. A float is truncated toward zero, then the operation reports whether
-the resulting integer is a member of the range. Other values, NaN, and
-infinities are dynamic errors.
+`float` and tests whether its exact numeric value is an element of the range.
+An integral float can match an integer element; a non-integral float is never
+a member. No rounding or truncation is performed. Other values, including
+booleans, NaN, and infinities, are dynamic errors even for an empty range.
+Range construction still requires integer arguments.
+
+```python
+1.0 in range(3)                 # True
+1.9 in range(3)                 # False
+-1.0 in range(-3, 0)            # True
+-1.9 in range(-3, 0)            # False
+```
 
 ### repr
 

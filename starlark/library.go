@@ -1240,6 +1240,9 @@ func (r rangeValue) Has(y Value) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("'in <range>' requires integer as left operand, not %s", y.Type())
 	}
+	if f, ok := y.(Float); ok && math.Trunc(float64(f)) != float64(f) {
+		return false, nil
+	}
 	return r.contains(i), nil
 }
 

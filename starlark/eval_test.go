@@ -138,6 +138,7 @@ func TestExecFile(t *testing.T) {
 		"testdata/assign.star",
 		"testdata/bool.star",
 		"testdata/builtins.star",
+		"testdata/range_membership.star",
 		"testdata/builtin_keywords.star",
 		"testdata/bytes.star",
 		"testdata/control.star",

@@ -249,6 +249,13 @@ existence of floating-point NaN and its infamous comparison behavior
 assume the result of an ordered comparison is either less than,
 greater than, or equal: it may also fail.
 
+<b>Ranges</b>:
+Ranges store a start, step, and length rather than materialized elements.
+Membership validates the operand as an integer or finite float and rejects
+fractional floats as non-members. For an integer-valued candidate, it checks
+that the offset from the start is divisible by the step and that the resulting
+index is within bounds. No range elements are visited.
+
 <b>Strings</b>:
 
 TODO: discuss UTF-8 and string.bytes method.

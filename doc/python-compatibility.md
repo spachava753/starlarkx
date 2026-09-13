@@ -113,7 +113,7 @@ features that need separate decisions.
 | Values / Dictionary views | `OPEN` | - | - | - | - |
 | Values / Eager sequence built-ins | `OPEN` | - | - | - | - |
 | Values / Range hashability | `OPEN` | - | - | - | - |
-| Values / Range membership | `OPEN` | - | - | - | - |
+| Values / Range membership | `STARLARKX` | `DEFAULT` | `YES` | Accept integers and finite floats. An integral float matches exactly the same range elements as its integer value; a non-integral float is not a member. Do not truncate or round for membership. Keep errors for booleans, other nonnumeric values, NaN, and infinities, including for empty ranges. Keep range construction and integer-only arguments unchanged. | Make numeric membership consistent with exact integer/float equality while preserving checks for invalid operand types. |
 | Values / Representations | `OPEN` | - | - | - | - |
 | Values / Runtime type query | `OPEN` | - | - | - | - |
 | Values / Public `hash` | `OPEN` | - | - | - | - |
@@ -318,7 +318,7 @@ after loading, and easier to check before running.
 | Dictionary views | `keys()`, `values()`, and `items()` return new lists. | They return dynamic view objects. | Divergence |
 | Eager sequence built-ins | `enumerate`, `zip`, and `reversed` return new lists. | They return lazy iterator objects. | Divergence |
 | Range hashability | Equal `range` values compare equal but are unhashable. | `range` values are hashable. | Divergence |
-| Range membership | The left operand must be an `int` or finite `float`; floats are truncated toward zero, so `1.9 in range(3)` is true. Other types are errors. | Membership uses equality, so `1.9 in range(3)` is false and an unrelated type also produces false. | Divergence |
+| Range membership | Accepts integers and finite floats using exact numeric membership: `1.0 in range(3)` is true and `1.9 in range(3)` is false. Booleans, other nonnumeric values, NaN, and infinities remain errors, including for empty ranges. | Membership uses equality. These numeric examples agree, but unrelated types, NaN, and infinities produce false; booleans compare as integers. | Aligned finite-number membership / operand and Boolean divergence |
 | Representations | `repr` uses Starlark's stable syntax, including double-quoted strings; float infinities render as `+inf`/`-inf`. | Python representations commonly use single-quoted strings and render infinity as `inf`/`-inf`. | Divergence |
 | Runtime type query | `type(x)` returns a string such as `"list"`; it cannot construct types. | `type(x)` returns a type object, and the three-argument form constructs a class. | Divergence / omission |
 | Public `hash` | `hash(x)` accepts only strings and bytes and is deterministic. Other internally hashable values can be dict keys but cannot be passed to `hash`. | `hash(x)` accepts all hashable objects; string/bytes hashes are normally salted per process. | Divergence / restriction |
