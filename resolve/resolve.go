@@ -816,35 +816,22 @@ func (r *resolver) expr(e syntax.Expr) {
 
 	case *syntax.CallExpr:
 		r.expr(e.Fn)
-		var seenVarargs, seenKwargs bool
+		var seenKwargs bool
 		var seenName map[string]bool
-		var n, p int
 		for _, arg := range e.Args {
 			pos, _ := arg.Span()
 			if unop, ok := arg.(*syntax.UnaryExpr); ok && unop.Op == syntax.STARSTAR {
 				// **kwargs
-				if seenKwargs {
-					r.errorf(pos, "multiple **kwargs not allowed")
-				}
 				seenKwargs = true
 				r.expr(unop.X)
 			} else if ok && unop.Op == syntax.STAR {
 				// *args
 				if seenKwargs {
 					r.errorf(pos, "*args may not follow **kwargs")
-				} else if seenVarargs {
-					r.errorf(pos, "multiple *args not allowed")
 				}
-				seenVarargs = true
 				r.expr(unop.X)
 			} else if binop, ok := arg.(*syntax.BinaryExpr); ok && binop.Op == syntax.EQ {
 				// k=v
-				n++
-				if seenKwargs {
-					r.errorf(pos, "keyword argument may not follow **kwargs")
-				} else if seenVarargs {
-					r.errorf(pos, "keyword argument may not follow *args")
-				}
 				x := binop.X.(*syntax.Ident)
 				if seenName[x.Name] {
 					r.errorf(x.NamePos, "keyword argument %q is repeated", x.Name)
@@ -857,26 +844,13 @@ func (r *resolver) expr(e syntax.Expr) {
 				r.expr(binop.Y)
 			} else {
 				// positional argument
-				p++
-				if seenVarargs {
-					r.errorf(pos, "positional argument may not follow *args")
-				} else if seenKwargs {
+				if seenKwargs {
 					r.errorf(pos, "positional argument may not follow **kwargs")
 				} else if len(seenName) > 0 {
 					r.errorf(pos, "positional argument may not follow named")
 				}
 				r.expr(arg)
 			}
-		}
-
-		// Fail gracefully if compiler-imposed limit is exceeded.
-		if p >= 256 {
-			pos, _ := e.Span()
-			r.errorf(pos, "%v positional arguments in call, limit is 255", p)
-		}
-		if n >= 256 {
-			pos, _ := e.Span()
-			r.errorf(pos, "%v keyword arguments in call, limit is 255", n)
 		}
 
 	case *syntax.LambdaExpr:

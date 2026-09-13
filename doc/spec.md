@@ -1030,7 +1030,8 @@ idiv(6, 3)		# 2
 A call may provide arguments to function parameters either by
 position, as in the example above, or by name, as in first two calls
 below, or by a mixture of the two forms, as in the third call below.
-All the positional arguments must precede all the named arguments.
+Ordinary positional arguments must precede named arguments and `**` entries.
+Starred arguments follow the [call layout rules](#function-and-method-calls).
 Named arguments may improve clarity, especially in functions of
 several parameters. A `/` in the definition makes preceding parameters
 positional-only; parameters after `*` are keyword-only. See
@@ -1148,11 +1149,10 @@ same name, such as `f(x=1, x=2)`. A call that provides a `**kwargs`
 argument may yet have two values for the same name, such as
 `f(x=1, **dict(x=2))`. This results in a dynamic error.
 
-Function arguments are evaluated in the order they appear in the call.
-<!-- see https://github.com/bazelbuild/starlark/issues/13 -->
-
-A call may contain at most one `*args` argument, which must appear after all
-ordinary positional and named arguments.
+Function arguments are evaluated in written order. Each unpacked argument is
+expanded before the next argument expression runs. Calls may contain multiple
+`*` and `**` entries; see [function and method calls](#function-and-method-calls)
+for their placement, expansion, and error rules.
 
 The final argument to a function call may be followed by a trailing comma.
 
@@ -2509,6 +2509,81 @@ method ([string·endswith](#string·endswith)).
 Only built-in or application-defined types may have methods.
 
 See [Functions](#functions) for an explanation of function parameter passing.
+
+#### Argument layout
+
+Calls accept ordinary positional arguments, named arguments, `*iterable`
+entries, and `**mapping` entries. There may be any number of unpackings.
+
+- Ordinary positional arguments may be mixed with `*` entries until the first
+  named argument or `**` entry.
+- Named arguments may be mixed with `*` entries before the first `**` entry,
+  and with `**` entries afterward.
+- An ordinary positional argument after a named argument or `**` is a static
+  error. A `*` entry after `**` is also a static error.
+- Repeating an explicit keyword name, as in `f(x=1, x=2)`, is a static error.
+
+```python
+def collect(*args, **kwargs):
+    return args, kwargs
+
+collect(0, *[1, 2], 3, *[4])          # ((0, 1, 2, 3, 4), {})
+collect(**{"x": 1}, y=2, **{"z": 3}) # ((), {"x": 1, "y": 2, "z": 3})
+collect(x=1, *[2], y=3)              # ((2,), {"x": 1, "y": 3})
+```
+
+#### Argument construction
+
+The function expression is evaluated first. Argument entries are then processed
+from left to right, completing each entry before starting the next:
+
+- An ordinary positional argument evaluates its expression and records its value.
+- A named argument evaluates its value expression, checks that its name has not
+  already been supplied, and records the name/value pair.
+- A `*` entry evaluates its expression and consumes its iterable, appending
+  each item to the positional arguments. Strings and bytes require explicit
+  iterable views. Iterating a dictionary supplies its keys.
+- A `**` entry evaluates its expression and reads an iterable mapping in key
+  iteration order. Each key must be a string, but need not be an identifier;
+  `collect(**{"max-temp": 10, "": 20})` is valid. For each key, type and
+  duplicate-name checks precede the value lookup. A failed lookup is an error.
+
+Each keyword name may be supplied once across all named arguments and mapping
+entries, even when the values are equal. A duplicate is a dynamic error before
+any callee is invoked, including a built-in or host callable. Keyword arguments
+retain their insertion order. Use an explicit dictionary update before the
+call when replacement is intended.
+
+```python
+collect(x=1, **{"x": 1})             # error: duplicate keyword argument
+"{x}".format(x=1, **{"x": 2})        # error: duplicate keyword argument
+```
+
+The input iterator stays active during each expansion and is released before
+the next entry is evaluated. It is also released if expansion fails. Existing
+iteration and mutation checks apply. The argument containers are new; values
+inside them remain shared with the inputs.
+
+```python
+def example():
+    items = [1]
+    def grow():
+        items.append(2)
+        return {}
+    result = collect(*items, **grow())
+    return result, items
+
+example()                           # (((1,), {}), [1, 2])
+```
+
+An argument-expression, expansion, or keyword-validation error stops construction
+and skips later entries. Earlier side effects remain in effect. After successful
+construction, the function must be callable and its arguments must satisfy its
+signature. Positional arguments fill positional parameter slots before keyword
+binding; a keyword does not reserve a slot against a later `*` entry. Thus
+`f(a=1, *[2])` fails for `def f(a, b): ...`, since both values fill `a`.
+A keyword matching a positional-only parameter may instead enter `**kwargs`,
+as described in [function definitions](#function-definitions).
 
 ### Dot expressions
 

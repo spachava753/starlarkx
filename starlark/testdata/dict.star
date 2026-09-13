@@ -64,8 +64,8 @@ assert.eq(small.keys(), ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"])
 assert.fails(lambda: {"aa": 1, "bb": 2, "cc": 3, "bb": 4}, 'duplicate key: "bb"')
 
 # Check that even with many positional args, keyword collisions are detected.
-assert.fails(lambda: dict({'b': 3}, a=4, **dict(a=5)), 'dict: duplicate keyword arg: "a"')
-assert.fails(lambda: dict({'a': 2, 'b': 3}, a=4, **dict(a=5)), 'dict: duplicate keyword arg: "a"')
+assert.fails(lambda: dict({'b': 3}, a=4, **dict(a=5)), 'duplicate keyword argument: "a"')
+assert.fails(lambda: dict({'a': 2, 'b': 3}, a=4, **dict(a=5)), 'duplicate keyword argument: "a"')
 # positional/keyword arg key collisions are ok
 assert.eq(dict((['a', 2], ), a=4), {'a': 4})
 assert.eq(dict((['a', 2], ['a', 3]), a=4), {'a': 4})

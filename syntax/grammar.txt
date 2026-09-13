@@ -135,8 +135,9 @@ LoopVariables = TargetEntry {',' TargetEntry} .
 
 # Notes:
 - Ambiguity is resolved using operator precedence.
-- The grammar does not enforce the legal order of params and args,
-  nor that the first compclause must be a 'for'.
+- This grammar describes syntactic structure, but does not express every
+  constraint on valid programs. See ../doc/spec.md for the language's validity
+  rules and runtime behavior, and ../doc/impl.md for implementation details.
 
 TODO:
 - explain how the lexer generates indent, outdent, and newline tokens.

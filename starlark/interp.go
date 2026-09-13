@@ -290,79 +290,60 @@ loop:
 		case compile.JMP:
 			pc = arg
 
-		case compile.CALL, compile.CALL_VAR, compile.CALL_KW, compile.CALL_VAR_KW:
-			var kwargs Value
-			if op == compile.CALL_KW || op == compile.CALL_VAR_KW {
-				kwargs = stack[sp-1]
-				sp--
+		case compile.ARGS_EXTEND:
+			err = extendCallArgs(stack[sp-2].(*List), stack[sp-1])
+			sp -= 2
+			if err != nil {
+				break loop
 			}
 
-			var args Value
-			if op == compile.CALL_VAR || op == compile.CALL_VAR_KW {
-				args = stack[sp-1]
-				sp--
+		case compile.ARGS_KEYWORD:
+			dict := stack[sp-3].(*Dict)
+			key, value := stack[sp-2], stack[sp-1]
+			sp -= 3
+			if err = checkCallKeyword(dict, key); err != nil {
+				break loop
+			}
+			if err = dict.SetKey(key, value); err != nil {
+				break loop
 			}
 
-			// named args (pairs)
+		case compile.ARGS_MERGE:
+			err = mergeCallKeywords(stack[sp-2].(*Dict), stack[sp-1])
+			sp -= 2
+			if err != nil {
+				break loop
+			}
+
+		case compile.CALL, compile.CALL_EX:
+			var positional Tuple
 			var kvpairs []Tuple
-			if nkvpairs := int(arg & 0xff); nkvpairs > 0 {
-				kvpairs = make([]Tuple, 0, nkvpairs)
-				kvpairsAlloc := make(Tuple, 2*nkvpairs) // allocate a single backing array
-				sp -= 2 * nkvpairs
-				for i := range nkvpairs {
-					pair := kvpairsAlloc[:2:2]
-					kvpairsAlloc = kvpairsAlloc[2:]
-					pair[0] = stack[sp+2*i]   // name
-					pair[1] = stack[sp+2*i+1] // value
-					kvpairs = append(kvpairs, pair)
-				}
-			}
-			if kwargs != nil {
-				// Add key/value items from **kwargs dictionary.
-				dict, ok := kwargs.(IterableMapping)
-				if !ok {
-					err = fmt.Errorf("argument after ** must be a mapping, not %s", kwargs.Type())
-					break loop
-				}
-				items := dict.Items()
-				for _, item := range items {
-					if !is[String](item[0]) {
-						err = fmt.Errorf("keywords must be strings, not %s", item[0].Type())
-						break loop
+			if op == compile.CALL_EX {
+				// Both containers are private to this call construction.
+				positional = Tuple(stack[sp-2].(*List).elems)
+				kvpairs = stack[sp-1].(*Dict).Items()
+				sp -= 2
+			} else {
+				if nkvpairs := int(arg & 0xff); nkvpairs > 0 {
+					kvpairs = make([]Tuple, 0, nkvpairs)
+					kvpairsAlloc := make(Tuple, 2*nkvpairs)
+					sp -= 2 * nkvpairs
+					for i := range nkvpairs {
+						pair := kvpairsAlloc[:2:2]
+						kvpairsAlloc = kvpairsAlloc[2:]
+						pair[0] = stack[sp+2*i]
+						pair[1] = stack[sp+2*i+1]
+						kvpairs = append(kvpairs, pair)
 					}
 				}
-				if len(kvpairs) == 0 {
-					kvpairs = items
-				} else {
-					kvpairs = append(kvpairs, items...)
+				if npos := int(arg >> 8); npos > 0 {
+					positional = stack[sp-npos : sp]
+					sp -= npos
+					// A Starlark function will not mutate or retain this tuple.
+					if !is[*Function](stack[sp-1]) {
+						positional = slices.Clone(positional)
+					}
 				}
-			}
-
-			// positional args
-			var positional Tuple
-			if npos := int(arg >> 8); npos > 0 {
-				positional = stack[sp-npos : sp]
-				sp -= npos
-
-				// Copy positional arguments into a new array,
-				// unless the callee is another Starlark function,
-				// in which case it can be trusted not to mutate them.
-				if !is[*Function](stack[sp-1]) || args != nil {
-					positional = slices.Clone(positional)
-				}
-			}
-			if args != nil {
-				// Add elements from *args sequence.
-				iter := Iterate(args)
-				if iter == nil {
-					err = fmt.Errorf("argument after * must be iterable, not %s", args.Type())
-					break loop
-				}
-				var elem Value
-				for iter.Next(&elem) {
-					positional = append(positional, elem)
-				}
-				iter.Done()
 			}
 
 			function := stack[sp-1]

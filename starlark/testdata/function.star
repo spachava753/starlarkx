@@ -198,16 +198,16 @@ def f(*args, **kwargs):
   return args, kwargs
 
 assert.eq(f(x=1, y=2), ((), {"x": 1, "y": 2}))
-assert.fails(lambda: f(x=1, **dict(x=2)), 'multiple values for parameter "x"')
+assert.fails(lambda: f(x=1, **dict(x=2)), 'duplicate keyword argument: "x"')
 
 def g(x, y):
   return x, y
 
 assert.eq(g(1, y=2), (1, 2))
-assert.fails(lambda: g(1, y=2, **{'y': 3}), 'multiple values for parameter "y"')
+assert.fails(lambda: g(1, y=2, **{'y': 3}), 'duplicate keyword argument: "y"')
 
 ---
-# Regression test for a bug in CALL_VAR_KW.
+# Regression test for stack handling in a call with both * and ** arguments.
 
 load("assert.star", "assert")
 
@@ -232,10 +232,7 @@ def f(*args, **kwargs):
 y = f(id(1), id(2), x=id(3), *[id(4)], **dict(z=id(5)))
 assert.eq(y, ((1, 2, 4), dict(x=3, z=5)))
 
-# This matches Python2 and Starlark-in-Java, but not Python3 [1 2 4 3 6].
-# *args and *kwargs are evaluated last.
-# (Python[23] also allows keyword arguments after *args.)
-# See github.com/bazelbuild/starlark#13 for spec change.
+# Named and unpacked argument expressions run in written order.
 assert.eq(r, [1, 2, 3, 4, 5])
 
 ---

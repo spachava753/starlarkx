@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 24
+const Version = 25
 
 type Opcode uint8
 
@@ -123,6 +123,11 @@ const (
 	TOSTRING     //          value TOSTRING     string
 	SETADD       //       set elem SETADD       -
 
+	ARGS_EXTEND  //      list iterable ARGS_EXTEND  -
+	ARGS_KEYWORD //     dict key value ARGS_KEYWORD -
+	ARGS_MERGE   //       dict mapping ARGS_MERGE   -
+	CALL_EX      // fn positional-list keyword-dict CALL_EX result
+
 	// --- opcodes with an argument must go below this line ---
 
 	// control flow
@@ -152,13 +157,10 @@ const (
 	UNPACK       //          iterable UNPACK<n>           vn ... v1
 
 	// n>>8 is #positional args and n&0xff is #named args (pairs).
-	CALL        // fn positional named                CALL<n>        result
-	CALL_VAR    // fn positional named *args          CALL_VAR<n>    result
-	CALL_KW     // fn positional named       **kwargs CALL_KW<n>     result
-	CALL_VAR_KW // fn positional named *args **kwargs CALL_VAR_KW<n> result
+	CALL // fn positional named CALL<n> result
 
 	OpcodeArgMin = JMP
-	OpcodeMax    = CALL_VAR_KW
+	OpcodeMax    = CALL
 )
 
 // TODO(adonovan): add dynamic checks for missing opcodes in the tables below.
@@ -168,9 +170,10 @@ var opcodeNames = [...]string{
 	APPEND:       "append",
 	ATTR:         "attr",
 	CALL:         "call",
-	CALL_KW:      "call_kw ",
-	CALL_VAR:     "call_var",
-	CALL_VAR_KW:  "call_var_kw",
+	CALL_EX:      "call_ex",
+	ARGS_EXTEND:  "args_extend",
+	ARGS_KEYWORD: "args_keyword",
+	ARGS_MERGE:   "args_merge",
 	CIRCUMFLEX:   "circumflex",
 	CJMP:         "cjmp",
 	CONSTANT:     "constant",
@@ -254,9 +257,10 @@ var stackEffect = [...]int8{
 	APPEND:       -2,
 	ATTR:         0,
 	CALL:         variableStackEffect,
-	CALL_KW:      variableStackEffect,
-	CALL_VAR:     variableStackEffect,
-	CALL_VAR_KW:  variableStackEffect,
+	CALL_EX:      -2,
+	ARGS_EXTEND:  -2,
+	ARGS_KEYWORD: -3,
+	ARGS_MERGE:   -2,
 	CIRCUMFLEX:   -1,
 	CJMP:         -1,
 	CONSTANT:     +1,
@@ -740,14 +744,8 @@ func (insn *insn) stackeffect() int {
 	if se == variableStackEffect {
 		arg := int(insn.arg)
 		switch insn.op {
-		case CALL, CALL_KW, CALL_VAR, CALL_VAR_KW:
+		case CALL:
 			se = -int(2*(insn.arg&0xff) + insn.arg>>8)
-			if insn.op != CALL {
-				se--
-			}
-			if insn.op == CALL_VAR_KW {
-				se--
-			}
 		case ITERJMP:
 			// Stack effect differs by successor:
 			// +1 for jmp/false/ok
@@ -924,7 +922,7 @@ func PrintOp(fn *Funcode, pc uint32, op Opcode, arg uint32) {
 		comment = fn.Prog.Names[arg]
 	case FREE:
 		comment = fn.FreeVars[arg].Name
-	case CALL, CALL_VAR, CALL_KW, CALL_VAR_KW:
+	case CALL:
 		comment = fmt.Sprintf("%d pos, %d named", arg>>8, arg&0xff)
 	default:
 		// JMP, CJMP, ITERJMP, MAKETUPLE, MAKELIST, LOAD, UNPACK:
@@ -1861,78 +1859,67 @@ func (fcomp *fcomp) call(call *syntax.CallExpr) {
 	fcomp.expr(call.Fn)
 	op, arg := fcomp.args(call)
 	fcomp.setPos(call.Lparen)
-	fcomp.emit1(op, arg)
+	if op == CALL_EX {
+		fcomp.emit(op)
+	} else {
+		fcomp.emit1(op, arg)
+	}
 }
 
-// args emits code to push a tuple of positional arguments
-// and a tuple of named arguments containing alternating keys and values.
-// Either or both tuples may be empty (TODO(adonovan): optimize).
+// args emits arguments in written order, expanding each source immediately.
 func (fcomp *fcomp) args(call *syntax.CallExpr) (op Opcode, arg uint32) {
-	var callmode int
-	// Compute the number of each kind of parameter.
-	var p, n int // number of  positional, named arguments
-	var varargs, kwargs syntax.Expr
+	var positional, named int
+	var unpack bool
 	for _, arg := range call.Args {
 		if binary, ok := arg.(*syntax.BinaryExpr); ok && binary.Op == syntax.EQ {
+			named++
+		} else if unary, ok := arg.(*syntax.UnaryExpr); ok && (unary.Op == syntax.STAR || unary.Op == syntax.STARSTAR) {
+			unpack = true
+		} else {
+			positional++
+		}
+	}
+	if !unpack && positional < 256 && named < 256 {
+		for _, arg := range call.Args {
+			if binary, ok := arg.(*syntax.BinaryExpr); ok && binary.Op == syntax.EQ {
+				fcomp.string(binary.X.(*syntax.Ident).Name)
+				arg = binary.Y
+			}
+			fcomp.expr(arg)
+		}
+		return CALL, uint32(positional<<8 | named)
+	}
 
-			// named argument (name, value)
+	// Keep a private positional list and keyword dictionary above the callee.
+	fcomp.emit1(MAKELIST, 0)
+	fcomp.emit(MAKEDICT)
+	for _, arg := range call.Args {
+		pos := syntax.Start(arg)
+		if binary, ok := arg.(*syntax.BinaryExpr); ok && binary.Op == syntax.EQ {
+			fcomp.emit(DUP)
 			fcomp.string(binary.X.(*syntax.Ident).Name)
 			fcomp.expr(binary.Y)
-			n++
-			continue
-		}
-		if unary, ok := arg.(*syntax.UnaryExpr); ok {
-			if unary.Op == syntax.STAR {
-				callmode |= 1
-				varargs = unary.X
-				continue
-			} else if unary.Op == syntax.STARSTAR {
-				callmode |= 2
-				kwargs = unary.X
-				continue
+			fcomp.setPos(pos)
+			fcomp.emit(ARGS_KEYWORD)
+		} else if unary, ok := arg.(*syntax.UnaryExpr); ok && unary.Op == syntax.STARSTAR {
+			fcomp.emit(DUP)
+			fcomp.expr(unary.X)
+			fcomp.setPos(pos)
+			fcomp.emit(ARGS_MERGE)
+		} else {
+			fcomp.emit(EXCH) // bring the positional list to the top
+			fcomp.emit(DUP)
+			op := APPEND
+			if unary, ok := arg.(*syntax.UnaryExpr); ok && unary.Op == syntax.STAR {
+				arg, op = unary.X, ARGS_EXTEND
 			}
+			fcomp.expr(arg)
+			fcomp.setPos(pos)
+			fcomp.emit(op)
+			fcomp.emit(EXCH)
 		}
-
-		// positional argument
-		fcomp.expr(arg)
-		p++
 	}
-
-	// Python2 and Python3 both permit named arguments
-	// to appear both before and after a *args argument:
-	//   f(1, 2, x=3, *[4], y=5, **dict(z=6))
-	//
-	// They also differ in their evaluation order:
-	//  Python2: 1 2 3 5 4 6 (*args and **kwargs evaluated last)
-	//  Python3: 1 2 4 3 5 6 (positional args evaluated before named args)
-	// Starlark-in-Java historically used a third order:
-	//  Lexical: 1 2 3 4 5 6 (all args evaluated left-to-right)
-	//
-	// After discussion in github.com/bazelbuild/starlark#13, the
-	// spec now requires Starlark to statically reject named
-	// arguments after *args (e.g. y=5), and to use Python2-style
-	// evaluation order. This is both easy to implement and
-	// consistent with lexical order:
-	//
-	//   f(1, 2, x=3, *[4], **dict(z=6)) # 1 2 3 4 6
-
-	// *args
-	if varargs != nil {
-		fcomp.expr(varargs)
-	}
-
-	// **kwargs
-	if kwargs != nil {
-		fcomp.expr(kwargs)
-	}
-
-	// TODO(adonovan): avoid this with a more flexible encoding.
-	if p >= 256 || n >= 256 {
-		// resolve already checked this; should be unreachable
-		panic("too many arguments in call")
-	}
-
-	return CALL + Opcode(callmode), uint32(p<<8 | n)
+	return CALL_EX, 0
 }
 
 func hasStar(elements []syntax.Expr) bool {

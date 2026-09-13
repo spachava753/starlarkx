@@ -154,6 +154,7 @@ func TestExecFile(t *testing.T) {
 		"testdata/filter.star",
 		"testdata/float.star",
 		"testdata/function.star",
+		"testdata/call_unpacking.star",
 		"testdata/int.star",
 		"testdata/json.star",
 		"testdata/list.star",

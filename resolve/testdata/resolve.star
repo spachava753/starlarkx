@@ -291,24 +291,26 @@ def n(*, a=1, **kwargs): # ok
   pass
 
 ---
-# No arguments may follow **kwargs in a call.
+# Positional and single-star arguments cannot follow **kwargs.
 def f(*args, **kwargs):
   pass
 
 f(**{}, 1) ### `argument may not follow \*\*kwargs`
-f(**{}, x=1) ### `argument may not follow \*\*kwargs`
+f(**{}, x=1) # ok
 f(**{}, *[]) ### `\*args may not follow \*\*kwargs`
-f(**{}, **{}) ### `multiple \*\*kwargs not allowed`
+f(**{}, **{}) # ok
 
 ---
-# Only **kwargs may follow *args in a call.
+# Arguments may follow *args, subject to positional/keyword ordering.
 def f(*args, **kwargs):
   pass
 
-f(*[], 1) ### `positional argument may not follow \*args`
-f(*[], a=1) ### `keyword argument may not follow \*args`
-f(*[], *[]) ### `multiple \*args not allowed`
+f(*[], 1) # ok
+f(*[], a=1) # ok
+f(*[], *[]) # ok
 f(*[], **{}) # ok
+f(x=1, *[], 2) ### `positional argument may not follow named`
+f(x=1, *[], **{}, x=2) ### `keyword argument "x" is repeated`
 
 ---
 # Parameter names must be unique.

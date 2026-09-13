@@ -76,6 +76,34 @@ the normal value representation for other types. String addition joins the
 parts. Conversion uses the runtime operation directly, so a local binding of
 `str` cannot affect interpolation.
 
+## Call argument construction
+
+The syntax tree keeps call arguments in written order. The resolver validates
+placement and repeated explicit keyword names. Ordinary positional arguments
+must precede named arguments and double-star entries; single-star entries must
+precede double-star entries. The resolver visits every operand as an expression.
+
+Calls with unpacking build a private positional list and an ordered keyword
+dictionary on the operand stack. Each argument's code is followed immediately
+by the operation that appends its value or expands its source. Single-star
+entries consume an iterator into the positional list. Double-star entries
+iterate mapping keys, check that each key is a new string name, look up its
+value, and insert the pair. Explicit keywords use the same duplicate check.
+Each iterator is released when its expansion finishes or fails.
+
+Once construction succeeds, the positional list's private storage becomes the
+argument tuple, and the keyword dictionary supplies ordered name/value pairs.
+The call instruction passes these to the callee. No input collection is handed
+over as the argument container, and duplicate keyword errors occur before the
+callee can run. Values inside the containers remain shared. Signature binding
+then follows the ordinary parameter rules.
+
+Small calls without unpacking keep a compact instruction with encoded argument
+counts and values placed directly on the stack. Large calls use the same
+collection-building path as unpacked calls. Both paths evaluate expressions in
+written order; the compact path needs no dynamic keyword-name checks because
+all its names were checked statically.
+
 ## Parameter binding
 
 The parser represents `/` as a parameter-list marker. The resolver requires
