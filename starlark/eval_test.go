@@ -960,8 +960,32 @@ g(z=7)
 
 type badType string
 
-func (b *badType) String() string        { return "badType" }
-func (b *badType) Type() string          { return "badType:" + string(*b) } // panics if b==nil
+func (b *badType) String() string { return "badType" }
+func (b *badType) Type() string {
+	if b == nil {
+		// Use an explicit panic rather than dereferencing b. This fixture tests
+		// Unpack's recovery and Go-type-name fallback, not OS fault delivery.
+		//
+		// A nil dereference hung when this test ran as a descendant of Zed's
+		// ACP server (CPE) on macOS. A standalone Go program reproduced it:
+		// keeping its inherited EXC_BAD_ACCESS Mach exception port hung, while
+		// clearing that port in the probe process restored normal panic/recover.
+		// Ordinary POSIX signal masks and dispositions did not reveal the issue;
+		// Mach exception handling precedes delivery to Go's signal handler.
+		//
+		// Matching upstream crash-handler code returns KERN_SUCCESS for another
+		// task's exception, despite its comment requiring KERN_FAILURE. Success
+		// resumes the faulting instruction without fixing it, causing repeated
+		// faults instead of letting Go turn the signal into a recoverable panic:
+		// https://github.com/EmbarkStudios/crash-handling/blob/171a88b5a914ffff8607cbe8763d8c4dd59fbd02/crash-handler/src/mac/state.rs#L417
+		// The exact crate revision in the running Zed binary was not verified.
+		//
+		// Keep this explicit panic so the regression remains independent of
+		// inherited crash handlers; do not restore the test-suite skip.
+		panic("nil badType receiver")
+	}
+	return "badType:" + string(*b)
+}
 func (b *badType) Truth() starlark.Bool  { return true }
 func (b *badType) Hash() (uint32, error) { return 0, nil }
 func (b *badType) Freeze()               {}
@@ -976,27 +1000,47 @@ func (b badType2) Truth() starlark.Bool  { return true }
 func (b badType2) Hash() (uint32, error) { return 0, nil }
 func (b badType2) Freeze()               {}
 
-var _ starlark.Value = new(badType)
+var _ starlark.Value = badType2("")
 
 // TestUnpackErrorBadType verifies that the Unpack functions fail
-// gracefully when a parameter's default value's Type method panics.
+// gracefully when a parameter's zero value's Type method panics.
 func TestUnpackErrorBadType(t *testing.T) {
 	var v1 *badType
 	var v2 badType2
-	for _, test := range []struct {
-		ptr  any
-		want string
+	for _, api := range []struct {
+		name   string
+		unpack func(any) error
 	}{
-		{&v1, "got NoneType, want *starlark_test.badType"}, // Go type name: (*badType)(nil).Type() panics
-		{&v2, "got NoneType, want badType"},                // Starlark type name: badType2{}.Type() works
+		{"UnpackArg", func(ptr any) error {
+			return starlark.UnpackArg(starlark.None, ptr)
+		}},
+		{"UnpackArgs/positional", func(ptr any) error {
+			return starlark.UnpackArgs("f", starlark.Tuple{starlark.None}, nil, "x", ptr)
+		}},
+		{"UnpackArgs/keyword", func(ptr any) error {
+			return starlark.UnpackArgs("f", nil, []starlark.Tuple{{starlark.String("x"), starlark.None}}, "x", ptr)
+		}},
+		{"UnpackPositionalArgs", func(ptr any) error {
+			return starlark.UnpackPositionalArgs("f", starlark.Tuple{starlark.None}, nil, 1, ptr)
+		}},
 	} {
-		err := starlark.UnpackArgs("f", starlark.Tuple{starlark.None}, nil, "x", test.ptr)
-		if err == nil {
-			t.Errorf("UnpackArgs succeeded unexpectedly")
-			continue
-		}
-		if !strings.Contains(err.Error(), test.want) {
-			t.Errorf("UnpackArgs error %q does not contain %q", err, test.want)
+		for _, test := range []struct {
+			name string
+			ptr  any
+			want string
+		}{
+			{"panicking Type", &v1, "got NoneType, want *starlark_test.badType"},
+			{"working Type", &v2, "got NoneType, want badType2"},
+		} {
+			t.Run(api.name+"/"+test.name, func(t *testing.T) {
+				err := api.unpack(test.ptr)
+				if err == nil {
+					t.Fatal("unpacking succeeded unexpectedly")
+				}
+				if !strings.HasSuffix(err.Error(), test.want) {
+					t.Errorf("error %q does not end with %q", err, test.want)
+				}
+			})
 		}
 	}
 }

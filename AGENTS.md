@@ -66,16 +66,18 @@ Useful commands:
 go test ./starlark -run '^TestExecFile$' -count=1 -timeout=40s
 
 # Full repository suite
-go test -timeout=120s -skip '^TestUnpackErrorBadType$' ./...
+go test -timeout=120s ./...
 
 # Diff and static checks
 git diff --check
 go vet ./...
 ```
 
-With the current Go 1.26 toolchain, the unfiltered suite may hang in
-`TestUnpackErrorBadType`; retain the documented skip until that unrelated issue
-is fixed. `go vet ./...` currently reports pre-existing `unsafe.Pointer`
+Panic-recovery fixtures should use explicit `panic` calls rather than deliberate
+nil-pointer memory accesses. Hardware-fault delivery has hung in this local
+macOS environment, independently of StarlarkX.
+
+`go vet ./...` currently reports pre-existing `unsafe.Pointer`
 warnings in `starlark/int_posix64.go` and `starlark/unpack.go`; do not treat new
 warnings as part of that baseline.
 
