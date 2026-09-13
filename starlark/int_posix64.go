@@ -40,6 +40,33 @@ import (
 // and the address space allocation succeeded.
 //
 // See int_generic.go for the basic representation concepts.
+//
+// This optimization is retained deliberately. In a Go 1.27.0 darwin/arm64
+// audit on Apple M4 (three 100ms runs, rounded medians), replacing it with
+// int_generic.go's safe two-field union changed these existing benchmarks:
+//
+//	                      current                 safe union
+//	bench_int             23.8 us,    1 alloc      38.7 us, 2002 allocs
+//	bench_range_iteration  1.86 us,   3 allocs      3.34 us,  204 allocs
+//	bench_mix             34.1 us, 483 allocs      45.8 us, 1808 allocs
+//
+// Each bench_int operation performs 1000 increments; range iteration visits
+// 200 elements. These are local measurements, not universal slowdown factors.
+// The safe union grows Int from 8 to 16 bytes on this target and allocates when
+// escaping Int values are boxed as Value. A safe pointer-backed representation
+// with a bounded cache also passed the suite, but uncached values allocate and
+// Go-level equality of those Int values needs separate review.
+//
+// Safety depends on retaining the mmap region for the process lifetime, never
+// dereferencing marker pointers, and keeping marker offsets in the int32 range.
+// The 4 GiB mapping reserves virtual address space, not eagerly populated RAM;
+// it is not a Go heap allocation that the GC can move or reclaim. Real big.Int
+// pointers remain pointers visible to the GC. Do not unmap or reuse the region.
+//
+// The stored-uintptr conversion in makeSmallInt intentionally triggers go vet.
+// It depends on Go accepting non-heap mmap pointers, outside ordinary safe-Go
+// guarantees. Targeted arithmetic and checkptr tests found no corruption in the
+// audit, but do not prove those runtime assumptions valid on every platform.
 type intImpl unsafe.Pointer
 
 // get returns the (small, big) arms of the union.

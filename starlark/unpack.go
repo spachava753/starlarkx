@@ -406,6 +406,30 @@ func (is *intset) len() int {
 // but does not let *ptr escape.
 //
 // ptr must be a non-nil pointer to a variable to which v may be assigned.
+//
+// Retained deliberately to keep argument destinations on the stack without
+// splitting the private unpacker's typed and reflective assignment paths.
+// A Go 1.27.0 darwin/arm64 audit on Apple M4 (three 100ms runs, rounded medians)
+// found that replacing this with ordinary reflection made even native typed
+// destinations escape: TestUnpackArgNoEscape went from 0 to 1 allocation, and
+// the startswith language benchmark went from 79.2 ns / 3 allocs to 96.4 ns /
+// 6 allocs. Escape summaries affect all callers, not just reflective branches.
+//
+// Unsafe is not the only allocation-free design: a safe prototype separating
+// private typed assignments from public reflection passed the full suite and
+// focused race tests. Native-string unpacking stayed near 2.5 ns / 0 allocs,
+// Starlark String unpacking improved from 18.2 to 2.56 ns / 0 allocs, and
+// startswith was 80.8 ns / 3 allocs. We retain this implementation rather than
+// that restructuring; these local results do not establish an unsafe speed
+// advantage over the split design.
+//
+// This assumes the runtime's two-word empty-interface layout and that the
+// hidden destination pointer is used synchronously and never retained. Set
+// still performs reflection's normal assignment and write barriers. Do not
+// let a heap object or global retain a hidden stack address. The uintptr round
+// trip in noescape intentionally triggers go vet; its nocheckptr directive
+// means passing checkptr tests does not validate the crucial conversion.
+// The audit found no corruption, not a proof of compiler/runtime portability.
 func reflectSetElem(ptr any, v reflect.Value) {
 	typ := reflect.TypeOf(ptr)
 	if typ.Kind() != reflect.Pointer {
