@@ -236,7 +236,8 @@ features that need separate decisions.
 | Methods / String `isidentifier` | `STARLARKX` | `DEFAULT` | `YES` | Return true exactly for non-empty strings with StarlarkX lexical identifier shape: a Go-Unicode letter or underscore followed by Go-Unicode letters, ASCII digits, or underscores. Return false for invalid UTF-8. Test lexical shape only, so keywords such as `def` return true. | Make the predicate answer whether text has the shape accepted by the StarlarkX scanner rather than importing Python's broader XID grammar. |
 | Methods / String `encode` | `OPEN` | - | - | - | - |
 | Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
-| Methods / Bytes, tuple, range, and numeric method surfaces | `OPEN` | - | - | - | - |
+| Methods / Tuple `count` and `index` | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `count(value)` and `index(value, start=0, stop=len(T))` using StarlarkX equality, without identity shortcuts or hashing. `index` returns the first match in the half-open interval or fails; negative bounds are relative to the end, and arbitrary-sized integer bounds are clamped. Reject non-integer bounds, including booleans and `None`. Propagate comparison errors. | Add familiar sequence search methods while preserving StarlarkX equality and strict integer arguments. |
+| Methods / Bytes, range, and numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
 | Dialect / `Set` | `STARLARKX` | `OPTION` | `YES` | Require `FileOptions.Set` for the built-in `set` name, set comprehensions, and set displays, including starred entries. An explicit `FileOptions{}` disables them; `Set: true` enables them. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable set syntax. | Use one existing option for set syntax without changing API defaults or built-in name resolution. |
 | Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Require the host to enable `while`, since its condition might never become false. |
@@ -304,6 +305,7 @@ after loading, and easier to check before running.
 | String offsets | Slice bounds and the `start`/`end` parameters of methods such as `find`, `index`, and `count` are byte offsets. | They are Unicode code-point offsets. | Divergence |
 | String `casefold` | Applies Unicode default full folding, with multi-character expansions and no locale dependence or normalization. Replaces each invalid UTF-8 byte with U+FFFD. Unicode tables are selected for the Go toolchain by the pinned `golang.org/x/text` dependency. | Applies the same folding algorithm to Unicode strings using Unicode 16.0 in CPython 3.14.7; Python strings do not contain invalid UTF-8 bytes. | Aligned algorithm / Unicode-version and text-model divergence |
 | String `lower`, `upper`, and `swapcase` | Use Go Unicode simple mappings without expansions or contextual casing; for example, `"ß".upper()` is `"ß"` and `"ΟΣ".lower()` is `"οσ"`. `swapcase` changes uppercase and lowercase letters but leaves titlecase unchanged. Replace each invalid UTF-8 byte with U+FFFD. | Unicode casing supports expansions and contextual rules: `"ß".upper()` is `"SS"` and `"ΟΣ".lower()` is `"ος"`. Python strings do not contain invalid UTF-8 bytes. | Divergence |
+| Tuple `count` and `index` | Positional-only search methods with negative and arbitrary-sized integer bounds for `index`. Use ordinary StarlarkX equality without identity shortcuts; reject booleans and other non-integers as bounds. | The same search operations and bound clipping, but comparisons include identity shortcuts and Python equality; bounds accept booleans and objects with `__index__`. | Aligned search contract / equality and type divergence |
 | Bytes construction | `bytes(x)` requires exactly one string, bytes, or iterable-of-byte-integers argument. A string is UTF-8-transcoded directly. | `bytes()` also supports zero/size arguments; converting text requires an encoding and optional error policy. | Divergence / restriction |
 | Bytes literals | Go Starlark accepts non-ASCII source text and `\u`/`\U` escapes in `b"..."`, encoding them as UTF-8. | Python bytes literals permit only ASCII source characters and do not interpret Unicode escapes as code points. | Divergence |
 | Bytes indexing/iteration | `b[i]` returns a one-byte `bytes`; bytes are not directly iterable, and `.elems()` yields integer bytes. | `b[i]` returns an `int`, and bytes iterate directly as integers. | Divergence |
@@ -532,8 +534,9 @@ Built-in type methods are also a subset rather than a compatibility layer:
   UTF-8 replacement policy. Strings still omit Python's `encode`, `maketrans`,
   and `translate`.
 - Bytes provide `.decode()` and `.elems()`. Decoding currently supports UTF-8;
-  the other Python bytes methods are absent. Tuples, ranges, integers, and
-  floats expose no Python-style methods.
+  the other Python bytes methods are absent. Tuples provide positional-only
+  `count` and `index`, using StarlarkX equality and strict integer search bounds.
+  Ranges, integers, and floats expose no Python-style methods.
 
 This repository bundles Go modules for JSON, math, time, and protocol buffers,
 but module availability is selected by the embedding application. They are not

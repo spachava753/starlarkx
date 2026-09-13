@@ -370,6 +370,7 @@ type HasAttrs interface {
 var (
 	_ HasAttrs = String("")
 	_ HasAttrs = new(List)
+	_ HasAttrs = Tuple(nil)
 	_ HasAttrs = new(Dict)
 	_ HasAttrs = new(Set)
 )
@@ -1104,6 +1105,9 @@ func (l *List) Clear() error {
 
 // A Tuple represents a Starlark tuple value.
 type Tuple []Value
+
+func (t Tuple) Attr(name string) (Value, error) { return builtinAttr(t, name, tupleMethods) }
+func (t Tuple) AttrNames() []string             { return builtinAttrNames(tupleMethods) }
 
 func (t Tuple) Len() int          { return len(t) }
 func (t Tuple) Index(i int) Value { return t[i] }

@@ -34,6 +34,34 @@ func TestStringMethod(t *testing.T) {
 	}
 }
 
+func TestTupleMethods(t *testing.T) {
+	tuple := starlark.Tuple{starlark.NewList([]starlark.Value{starlark.MakeInt(1)})}
+	tuple.Freeze()
+	if diff := cmp.Diff([]string{"count", "index"}, tuple.AttrNames()); diff != "" {
+		t.Fatal(diff)
+	}
+	if attr, err := tuple.Attr("missing"); attr != nil || err != nil {
+		t.Fatalf("missing attribute = %v, %v", attr, err)
+	}
+	for _, name := range tuple.AttrNames() {
+		method, err := tuple.Attr(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := starlark.Call(new(starlark.Thread), method, starlark.Tuple{tuple[0]}, nil)
+		want := "1"
+		if name == "index" {
+			want = "0"
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.String() != want {
+			t.Errorf("frozen tuple.%s = %v, want %s", name, got, want)
+		}
+	}
+}
+
 func TestListAppend(t *testing.T) {
 	l := starlark.NewList(nil)
 	l.Append(starlark.String("hello"))

@@ -121,6 +121,11 @@ var (
 		"sort":    NewBuiltin("sort", list_sort),
 	}
 
+	tupleMethods = map[string]*Builtin{
+		"count": NewBuiltin("count", tuple_count),
+		"index": NewBuiltin("index", tuple_index),
+	}
+
 	stringMethods = map[string]*Builtin{
 		"capitalize":     NewBuiltin("capitalize", string_capitalize),
 		"casefold":       NewBuiltin("casefold", string_casefold),
@@ -1913,6 +1918,65 @@ func dict_values(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 		res[i] = item[1]
 	}
 	return NewList(res), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#tuple·count
+func tuple_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var value Value
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
+		return nil, err
+	}
+	count := 0
+	for _, elem := range b.Receiver().(Tuple) {
+		eq, err := Equal(elem, value)
+		if err != nil {
+			return nil, nameErr(b, err)
+		}
+		if eq {
+			count++
+		}
+	}
+	return MakeInt(count), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#tuple·index
+func tuple_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	recv := b.Receiver().(Tuple)
+	var value Value
+	start, stop := zero, MakeInt(len(recv))
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value, &start, &stop); err != nil {
+		return nil, err
+	}
+	end := tupleIndexBound(stop, len(recv))
+	for i := tupleIndexBound(start, len(recv)); i < end; i++ {
+		if eq, err := Equal(recv[i], value); err != nil {
+			return nil, nameErr(b, err)
+		} else if eq {
+			return MakeInt(i), nil
+		}
+	}
+	return nil, nameErr(b, "value not in tuple")
+}
+
+// tupleIndexBound normalizes an arbitrary-sized integer to [0, n].
+func tupleIndexBound(bound Int, n int) int {
+	i, ok := bound.Int64()
+	if !ok {
+		if bound.Sign() < 0 {
+			return 0
+		}
+		return n
+	}
+	if i < 0 {
+		i += int64(n)
+	}
+	if i < 0 {
+		return 0
+	}
+	if i > int64(n) {
+		return n
+	}
+	return int(i)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·append

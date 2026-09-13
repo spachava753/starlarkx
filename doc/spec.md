@@ -823,6 +823,11 @@ Tuples may be concatenated using the `+` operator.
 A tuple used in a Boolean context is considered true if it is
 non-empty.
 
+Tuples have two methods:
+
+* [`count`](#tuple·count)
+* [`index`](#tuple·index)
+
 
 ### Dictionaries
 
@@ -5605,6 +5610,43 @@ positional-only.
 "42".zfill(5)                            # "00042"
 "-42".zfill(5)                           # "-0042"
 "é".zfill(3)                             # "0é"
+```
+
+<a id='tuple·count'></a>
+### tuple·count
+
+`T.count(value)` returns the number of elements of tuple `T` equal to `value`.
+It accepts exactly one positional argument and returns zero if there are no
+matches. Elements need not be hashable. Comparisons use ordinary `==` semantics;
+any comparison error stops the operation.
+
+```python
+(1, 2, 1).count(1)                      # 2
+(True, 1, 1.0).count(1)                 # 2
+([1], [2], [1]).count([1])              # 2
+```
+
+<a id='tuple·index'></a>
+### tuple·index
+
+`T.index(value[, start[, stop]])` returns the index of the first element equal
+to `value` in the interval from `start` (inclusive) to `stop` (exclusive).
+The result is an index into the original tuple, not relative to `start`.
+If there is no match, including when the interval is empty, the method fails.
+Comparisons use ordinary `==` semantics and stop at the first match or
+comparison error. Elements need not be hashable.
+
+All arguments are positional-only. `start` defaults to zero and `stop` defaults
+to `len(T)`. Explicit bounds must be integers; `None`, booleans, and floats are
+not accepted. Negative bounds are relative to the end of the tuple. Bounds
+outside the tuple are clamped to the interval `[0, len(T)]`, even for integers
+larger than a machine word.
+
+```python
+("a", "b", "a").index("a")              # 0
+("a", "b", "a").index("a", 1)           # 2
+("a", "b", "a").index("a", -1)          # 2
+("a", "b", "a").index("a", 1, 2)        # error: value not in tuple
 ```
 
 ## Dialect differences
