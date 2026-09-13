@@ -1647,8 +1647,9 @@ func type_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#zip
 func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	if len(kwargs) > 0 {
-		return nil, fmt.Errorf("zip does not accept keyword arguments")
+	var strict bool
+	if err := UnpackArgs("zip", nil, kwargs, "strict?", &strict); err != nil {
+		return nil, err
 	}
 	rows, cols := 0, len(args)
 	iters := make([]Iterator, cols)
@@ -1665,13 +1666,18 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 			return nil, fmt.Errorf("zip: argument #%d is not iterable: %s", i+1, seq.Type())
 		}
 		iters[i] = it
-		n := Len(seq)
-		if i == 0 || n < rows {
-			rows = n // possibly -1
+		if !strict {
+			n := Len(seq)
+			if i == 0 || n < rows {
+				rows = n // possibly -1
+			}
 		}
 	}
+	if cols == 0 {
+		return NewList(nil), nil
+	}
 	var result []Value
-	if rows >= 0 {
+	if rows >= 0 && !strict {
 		// length known
 		result = make([]Value, rows)
 		array := make(Tuple, cols*rows) // allocate a single backing array
@@ -1684,12 +1690,17 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 			result[i] = tuple
 		}
 	} else {
-		// length not known
+		// Unknown lengths or strict exhaustion checks.
 	outer:
 		for {
 			tuple := make(Tuple, cols)
 			for i, iter := range iters {
 				if !iter.Next(&tuple[i]) {
+					if strict {
+						if err := checkStrictIterators("zip", iters, i); err != nil {
+							return nil, err
+						}
+					}
 					break outer
 				}
 			}
@@ -1701,8 +1712,9 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#map
 func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	if len(kwargs) != 0 {
-		return nil, fmt.Errorf("map: unexpected keyword arguments")
+	var strict bool
+	if err := UnpackArgs("map", nil, kwargs, "strict?", &strict); err != nil {
+		return nil, err
 	}
 	if len(args) < 2 {
 		return nil, fmt.Errorf("map: got %d arguments, want at least 2", len(args))
@@ -1731,6 +1743,11 @@ func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 		row := make(Tuple, len(iters))
 		for i, iter := range iters {
 			if !iter.Next(&row[i]) {
+				if strict {
+					if err := checkStrictIterators("map", iters, i); err != nil {
+						return nil, err
+					}
+				}
 				return NewList(result), nil
 			}
 		}
@@ -1740,6 +1757,21 @@ func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 		}
 		result = append(result, value)
 	}
+}
+
+// checkStrictIterators is called after an iterator ends while building a row.
+func checkStrictIterators(name string, iters []Iterator, exhausted int) error {
+	if exhausted > 0 {
+		return fmt.Errorf("%s: iterable #%d is shorter than iterable #1", name, exhausted+1)
+	}
+	// The first iterator ended. Probe the others only until a mismatch is found.
+	var extra Value
+	for i, iter := range iters[1:] {
+		if iter.Next(&extra) {
+			return fmt.Errorf("%s: iterable #%d is longer than iterable #1", name, i+2)
+		}
+	}
+	return nil
 }
 
 // ---- methods of built-in types ---

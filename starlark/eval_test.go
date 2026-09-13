@@ -144,6 +144,7 @@ func TestExecFile(t *testing.T) {
 		"testdata/loop_else.star",
 		"testdata/dict.star",
 		"testdata/map.star",
+		"testdata/strict_iteration.star",
 		"testdata/delete.star",
 		"testdata/set_unpack.star",
 		"testdata/set_display.star",

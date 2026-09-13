@@ -14,7 +14,7 @@ assert.fails(lambda: map(abs), "at least 2")
 assert.fails(lambda: map(), "at least 2")
 assert.fails(lambda: map(abs, "ab"), "not iterable")
 assert.fails(lambda: map(abs, [], 1), "not iterable")
-assert.fails(lambda: map(abs, [], strict=True), "keyword")
+assert.fails(lambda: map(abs, [], unknown=True), "keyword")
 assert.fails(lambda: map(function=abs, iterable=[]), "keyword")
 assert.fails(lambda: map(abs, [1], [2]), "arguments")
 

@@ -3772,11 +3772,13 @@ With no argument, `list()` returns a new empty list.
 
 ### map
 
-`map(function, iterable, /, *iterables)` returns a new list of function results.
-It accepts a callable and one or more iterables, all supplied positionally.
-It takes one item from each input, from left to right, and calls the function
-with those items as positional arguments. It stops when an input runs out.
-All callbacks finish before the list is returned.
+`map(function, iterable, /, *iterables, strict=False)` returns a new list of
+function results. It accepts a callable and one or more iterables, all supplied
+positionally. It takes one item from each input, from left to right, and calls
+the function with those items as positional arguments. The keyword-only
+`strict` option must be a Boolean. When omitted or false, `map` stops when an
+input runs out. When true, unequal input lengths are an error. All callbacks
+finish before the list is returned.
 
 ```python
 map(abs, [-2, 0, 3])                              # [2, 0, 3]
@@ -3789,6 +3791,19 @@ during callbacks, preventing mutation of the iterated collections. An error
 in a callback stops evaluation. Every iterator is released on success or
 failure. When inputs have different lengths, an earlier input may supply
 one extra item before a later input runs out.
+
+With `strict=True`, lengths are checked through iteration, not by a pre-scan.
+If a later input runs out after an earlier input supplied an item for the same
+group, `map` fails immediately without advancing the remaining inputs. If the
+first input runs out, the remaining inputs are checked in order for an extra
+item; the first such item causes an error. No callback runs for an incomplete
+group. Earlier callback side effects remain, but no partial result list is
+returned on error.
+
+```python
+map(lambda a, b: a + b, [1, 2], [10, 20], strict=True)  # [11, 22]
+map(lambda a, b: a + b, [1, 2], [10], strict=True)      # error: unequal lengths
+```
 
 ### max
 
@@ -4106,17 +4121,27 @@ type(0.0)               # "float"
 
 ### zip
 
-`zip()` returns a new list of n-tuples formed from corresponding
-elements of each of the n iterable sequences provided as arguments to
-`zip`.  That is, the first tuple contains the first element of each of
-the sequences, the second tuple contains the second element of each
-of the sequences, and so on.  The result list is only as long as the
-shortest of the input sequences.
+`zip(*iterables, strict=False)` returns a new list of n-tuples formed from
+corresponding elements of its n input iterables. With no inputs it returns an
+empty list. The keyword-only `strict` option must be a Boolean. When omitted or
+false, the result is only as long as the shortest input. When true, unequal
+input lengths are an error.
+
+All inputs must be iterable; strings require explicit iterable views. Input
+iterators stay active while the result is constructed and are released on
+success or error. No partial result list is returned on error.
+
+With `strict=True`, inputs are consumed from left to right using the same
+length-checking order as [map](#map), without a length pre-scan. Detecting a
+mismatch may consume an unmatched item. Inputs after the first detected
+mismatch are not advanced further.
 
 ```python
 zip()                                   # []
 zip(range(5))                           # [(0,), (1,), (2,), (3,), (4,)]
 zip(range(5), "abc".elems())            # [(0, "a"), (1, "b"), (2, "c")]
+zip([1, 2], [3, 4], strict=True)         # [(1, 3), (2, 4)]
+zip([1, 2], [3], strict=True)            # error: unequal lengths
 ```
 
 ## Built-in methods

@@ -129,6 +129,20 @@ keywords; mixed-argument helpers match names, detect binding collisions, and
 check required parameters and types. Built-ins with keyword-only options
 separate positional inputs from keyword pairs when applying these helpers.
 
+## Strict parallel iteration
+
+`map` and strict `zip` consume one group at a time, advancing input iterators
+from left to right. Strict mode uses iterator exhaustion rather than reported
+lengths. If a later iterator ends partway through a group, the call fails
+immediately. If the first iterator ends, a shared check probes subsequent
+iterators in order, stopping at the first extra item. Only complete groups
+produce result entries or invoke the `map` callback. Iterator cleanup is deferred
+across construction, so all acquired iterators are released on every return.
+
+Non-strict `zip` retains its existing allocation path for known lengths and its
+shortest-input loop for unknown lengths. Strict mode bypasses the length-based
+path so length hints cannot change mismatch timing or input consumption.
+
 ## Sequence assignment
 
 The parser represents a starred target as a unary star node. The resolver
