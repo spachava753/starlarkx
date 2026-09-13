@@ -618,6 +618,7 @@ non-empty.
 Strings have several built-in methods:
 
 * [`capitalize`](#string·capitalize)
+* [`casefold`](#string·casefold)
 * [`center`](#string·center)
 * [`codepoint_ords`](#string·codepoint_ords)
 * [`codepoints`](#string·codepoints)
@@ -4836,6 +4837,29 @@ lower case.
 "hello, world!".capitalize()		# "Hello, world!"
 "hElLo, wOrLd!".capitalize()		# "Hello, world!"
 "¿Por qué?".capitalize()		# "¿por qué?"
+```
+
+<a id='string·casefold'></a>
+### string·casefold
+
+`S.casefold()` returns a string using Unicode default full case folding for
+caseless text matching. It takes no arguments. Folding can expand one code point
+into several and change the string's byte length. It does not depend on the
+machine's locale or perform Unicode normalization.
+
+Each invalid UTF-8 byte is replaced with U+FFFD before folding. Different invalid
+byte sequences can therefore produce the same result; this is a text operation,
+not a byte-preserving comparison. Indexing and lengths still use byte offsets.
+
+The Unicode version follows the tables selected for the Go toolchain by the
+pinned `golang.org/x/text` dependency. Updating the toolchain or dependency can
+change mappings for characters added in newer Unicode versions.
+
+```python
+"Straße".casefold()                    # "strasse"
+"Σςσ".casefold()                       # "σσσ"
+"İ".casefold()                         # "i\u0307"
+"É".casefold() == "E\u0301".casefold()  # False: no normalization
 ```
 
 <a id='string·center'></a>

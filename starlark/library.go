@@ -24,6 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spachava753/starlarkx/syntax"
+	"golang.org/x/text/cases"
 )
 
 // Universe defines the set of universal built-ins, such as None, True, and len.
@@ -122,6 +123,7 @@ var (
 
 	stringMethods = map[string]*Builtin{
 		"capitalize":     NewBuiltin("capitalize", string_capitalize),
+		"casefold":       NewBuiltin("casefold", string_casefold),
 		"center":         NewBuiltin("center", string_justify),
 		"codepoint_ords": NewBuiltin("codepoint_ords", string_iterable),
 		"codepoints":     NewBuiltin("codepoints", string_iterable), // sic
@@ -2672,6 +2674,25 @@ func string_join(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 		buf.WriteString(s)
 	}
 	return String(buf.String()), nil
+}
+
+// Fold is stateless and safe to share across interpreter threads.
+var caseFolder = cases.Fold()
+
+func string_casefold(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	s := utf8Transcode(string(b.Receiver().(String)))
+	folded := caseFolder.String(s)
+	// Default folding uses uppercase Cherokee. x/text lowercases uppercase
+	// Cherokee instead: https://go.dev/issue/46101.
+	return String(strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.Cherokee, r) {
+			return unicode.ToUpper(r)
+		}
+		return r
+	}, folded)), nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·lower

@@ -166,6 +166,7 @@ func TestExecFile(t *testing.T) {
 		"testdata/proto.star",
 		"testdata/set.star",
 		"testdata/string.star",
+		"testdata/casefold.star",
 		"testdata/time.star",
 		"testdata/tuple.star",
 		"testdata/recursion.star",
@@ -1151,8 +1152,10 @@ func TestDeps(t *testing.T) {
 		slash := strings.IndexByte(pkg, '/')
 		dot := strings.IndexByte(pkg, '.')
 		if 0 < dot && dot < slash {
+			// x/text supplies full Unicode case folding for string.casefold.
 			if strings.HasPrefix(pkg, "github.com/spachava753/starlarkx/") ||
-				strings.HasPrefix(pkg, "golang.org/x/sys/") {
+				strings.HasPrefix(pkg, "golang.org/x/sys/") ||
+				strings.HasPrefix(pkg, "golang.org/x/text/") {
 				continue // permitted dependencies
 			}
 			t.Errorf("new interpreter dependency: %s", pkg)

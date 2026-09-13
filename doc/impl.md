@@ -258,6 +258,18 @@ index is within bounds. No range elements are visited.
 
 <b>Strings</b>:
 
+Case folding first replaces each invalid UTF-8 byte with U+FFFD using the
+runtime's existing UTF-8 transcoding helper. It then applies a shared, stateless
+`cases.Fold` transformer from `golang.org/x/text`. The transformer is safe for
+concurrent calls and supplies full, potentially multi-code-point mappings.
+A final pass maps Cherokee characters to uppercase using Go's Unicode tables,
+correcting the transformer's Cherokee folding bug
+([Go issue #46101](https://go.dev/issue/46101)).
+The dependency selects Unicode tables using Go-version build constraints;
+`cases.UnicodeVersion` identifies the selected data. The pinned v0.41.0 release
+uses Unicode 15.0 before Go 1.27 and Unicode 17.0 on Go 1.27 and later.
+No normalization or locale selection is applied.
+
 TODO: discuss UTF-8 and string.bytes method.
 
 <b>Dictionaries and sets</b>:
