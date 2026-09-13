@@ -166,6 +166,7 @@ var (
 		"splitlines":     NewBuiltin("splitlines", string_splitlines),
 		"startswith":     NewBuiltin("startswith", string_startswith),
 		"strip":          NewBuiltin("strip", string_strip),
+		"swapcase":       NewBuiltin("swapcase", string_swapcase),
 		"title":          NewBuiltin("title", string_title),
 		"upper":          NewBuiltin("upper", string_upper),
 		"zfill":          NewBuiltin("zfill", string_zfill),
@@ -2876,6 +2877,23 @@ func string_title(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 		buf.WriteRune(r)
 	}
 	return String(buf.String()), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·swapcase
+func string_swapcase(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	return String(strings.Map(func(r rune) rune {
+		switch {
+		case unicode.IsUpper(r):
+			return unicode.ToLower(r)
+		case unicode.IsLower(r):
+			return unicode.ToUpper(r)
+		default:
+			return r
+		}
+	}, string(b.Receiver().(String)))), nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·upper

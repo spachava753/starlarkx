@@ -661,6 +661,7 @@ Strings have several built-in methods:
 * [`splitlines`](#string·splitlines)
 * [`startswith`](#string·startswith)
 * [`strip`](#string·strip)
+* [`swapcase`](#string·swapcase)
 * [`title`](#string·title)
 * [`upper`](#string·upper)
 * [`zfill`](#string·zfill)
@@ -5269,6 +5270,10 @@ one byte long.
 ### string·lower
 
 `S.lower()` returns a copy of the string S with letters converted to lowercase.
+It uses the active Go toolchain's Unicode simple mappings, without
+multi-character expansions, contextual casing, locale-specific mappings, or
+normalization. Each invalid UTF-8 byte is replaced with U+FFFD. The method
+accepts no arguments.
 
 ```python
 "Hello, World!".lower()                 # "hello, world!"
@@ -5542,6 +5547,27 @@ and trailing Unicode code points contained in `cutset`.
 "  hello  ".strip("h o")                # "ell"
 ```
 
+<a id='string·swapcase'></a>
+### string·swapcase
+
+`S.swapcase()` returns a string with uppercase letters converted to lowercase
+and lowercase letters converted to uppercase. Titlecase letters and other
+code points are unchanged. It uses the active Go toolchain's Unicode uppercase
+and lowercase categories and simple case mappings, like [`lower`](#string·lower)
+and [`upper`](#string·upper), without multi-character expansions, contextual
+casing, locale-specific mappings, or normalization. Each invalid UTF-8 byte is
+replaced with U+FFFD. The method accepts no arguments.
+
+Swapping case twice does not necessarily restore the original string.
+
+```python
+"Hello, World!".swapcase()              # "hELLO, wORLD!"
+"Straße".swapcase()                     # "sTRAßE"
+"ΟΣ".swapcase()                         # "οσ"
+"Ǆǅǆ".swapcase()                        # "ǆǅǄ"
+"K".swapcase().swapcase()               # "K"
+```
+
 <a id='string·title'></a>
 ### string·title
 
@@ -5558,6 +5584,10 @@ Letters are converted to upper case at the start of words, lower case elsewhere.
 ### string·upper
 
 `S.upper()` returns a copy of the string S with letters converted to uppercase.
+Like [`lower`](#string·lower), it uses the active Go toolchain's Unicode simple
+mappings, without multi-character expansions, contextual casing, locale-specific
+mappings, or normalization. Each invalid UTF-8 byte is replaced with U+FFFD.
+The method accepts no arguments.
 
 ```python
 "Hello, World!".upper()                 # "HELLO, WORLD!"

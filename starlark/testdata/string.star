@@ -629,6 +629,27 @@ assert.eq("¿Por qué?".upper(), "¿POR QUÉ?")
 assert.eq("ǉubović".upper(), "ǇUBOVIĆ")
 assert.true("ǄENAN ǇUBOVIĆ".isupper())
 
+# str.swapcase: simple Unicode mappings, like upper and lower.
+assert.eq("".swapcase(), "")
+assert.eq("hElLo, WoRlD!".swapcase(), "HeLlO, wOrLd!")
+assert.eq("Éé Σσς İı".swapcase(), "éÉ σΣΣ iI")
+assert.eq("Ǆǅǆ".swapcase(), "ǆǅǄ")  # Titlecase is unchanged.
+assert.eq("𐐀𐐨".swapcase(), "𐐨𐐀")
+assert.eq("123 世界\u0301\x00".swapcase(), "123 世界\u0301\x00")
+assert.eq("ßﬃ".swapcase(), "ßﬃ")  # No multi-character expansions.
+assert.eq("ΟΣ".swapcase(), "οσ")  # No contextual final sigma.
+assert.eq("K".swapcase().swapcase(), "K")  # Not always reversible.
+assert.eq(("A" + "é"[1] + "€"[:2] + "z").swapcase(), "a" + "\ufffd" * 3 + "Z")
+assert.fails(lambda: "x".swapcase(1), "swapcase: got 1 arguments, want 0")
+assert.fails(lambda: "x".swapcase(x = 1), "swapcase: unexpected keyword arguments")
+assert.true("swapcase" in dir(""))
+
+# Pin the shared simple-mapping and invalid-UTF-8 policy.
+assert.eq("ßﬃ".upper(), "ßﬃ")
+assert.eq("ΟΣİ".lower(), "οσi")
+assert.eq(("A" + "€"[:2] + "z").lower(), "a\ufffd\ufffdz")
+assert.eq(("A" + "€"[:2] + "z").upper(), "A\ufffd\ufffdZ")
+
 # str.title
 assert.eq("hElLo, WoRlD!".title(), "Hello, World!")
 assert.eq("por qué".title(), "Por Qué")
