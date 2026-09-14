@@ -121,6 +121,11 @@ var (
 		"sort":    NewBuiltin("sort", list_sort),
 	}
 
+	rangeMethods = map[string]*Builtin{
+		"count": NewBuiltin("count", range_count),
+		"index": NewBuiltin("index", range_index),
+	}
+
 	tupleMethods = map[string]*Builtin{
 		"count": NewBuiltin("count", tuple_count),
 		"index": NewBuiltin("index", tuple_index),
@@ -1181,7 +1186,11 @@ var (
 	_ Comparable = rangeValue{}
 	_ Sliceable  = rangeValue{}
 	_ Container  = rangeValue{}
+	_ HasAttrs   = rangeValue{}
 )
+
+func (r rangeValue) Attr(name string) (Value, error) { return builtinAttr(r, name, rangeMethods) }
+func (r rangeValue) AttrNames() []string             { return builtinAttrNames(rangeMethods) }
 
 func (r rangeValue) Len() int          { return r.len }
 func (r rangeValue) Index(i int) Value { return MakeInt(r.start + i*r.step) }
@@ -1244,14 +1253,73 @@ func (x rangeValue) CompareSameType(op syntax.Token, y_ Value, depth int) (bool,
 }
 
 func (r rangeValue) Has(y Value) (bool, error) {
-	i, err := NumberToInt(y)
+	i, err := r.indexOf(y)
 	if err != nil {
 		return false, fmt.Errorf("'in <range>' requires integer as left operand, not %s", y.Type())
 	}
-	if f, ok := y.(Float); ok && math.Trunc(float64(f)) != float64(f) {
-		return false, nil
+	return i >= 0, nil
+}
+
+// indexOf returns the numeric value's position, or -1 if absent.
+// Validate before checking the length so invalid operands fail on empty ranges.
+func (r rangeValue) indexOf(y Value) (int, error) {
+	i, err := NumberToInt(y)
+	if err != nil {
+		return -1, err
 	}
-	return r.contains(i), nil
+	if f, ok := y.(Float); ok && math.Trunc(float64(f)) != float64(f) {
+		return -1, nil
+	}
+	var x int
+	if err := AsInt(i, &x); err != nil {
+		return -1, nil // outside the range representation's integer width
+	}
+	if r.len <= 0 || r.step > 0 && x < r.start || r.step < 0 && x > r.start {
+		return -1, nil
+	}
+	// Unsigned distances avoid overflow when the endpoints straddle zero,
+	// including a step equal to the minimum machine integer.
+	delta, step := uint(x)-uint(r.start), uint(r.step)
+	if r.step < 0 {
+		delta, step = uint(r.start)-uint(x), -step
+	}
+	quo, rem := delta/step, delta%step
+	if rem == 0 && quo < uint(r.len) {
+		return int(quo), nil
+	}
+	return -1, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#range·count
+func range_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var value Value
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
+		return nil, err
+	}
+	i, err := b.Receiver().(rangeValue).indexOf(value)
+	if err != nil {
+		return nil, nameErr(b, err)
+	}
+	if i >= 0 {
+		return one, nil
+	}
+	return zero, nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#range·index
+func range_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	var value Value
+	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
+		return nil, err
+	}
+	i, err := b.Receiver().(rangeValue).indexOf(value)
+	if err != nil {
+		return nil, nameErr(b, err)
+	}
+	if i < 0 {
+		return nil, nameErr(b, "value not in range")
+	}
+	return MakeInt(i), nil
 }
 
 func rangeEqual(x, y rangeValue) bool {
@@ -1266,16 +1334,6 @@ func rangeEqual(x, y rangeValue) bool {
 		return false // first element differs
 	}
 	return x.len == 1 || x.step == y.step
-}
-
-func (r rangeValue) contains(x Int) bool {
-	x32, err := AsInt32(x)
-	if err != nil {
-		return false // out of range
-	}
-	delta := x32 - r.start
-	quo, rem := delta/r.step, delta%r.step
-	return rem == 0 && 0 <= quo && quo < r.len
 }
 
 type rangeIterator struct {

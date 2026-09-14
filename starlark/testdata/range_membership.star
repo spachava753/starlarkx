@@ -29,9 +29,16 @@ def test_numeric_membership():
         for x in values:
             assert.eq(x in r, x in items)
             assert.eq(x not in r, x not in items)
+            assert.eq(r.count(x), items.count(x))
+            if x in items:
+                assert.eq(r.index(x), items.index(x))
+            else:
+                assert.fails(lambda: r.index(x), "value not in range")
         for invalid in [True, False, None, "1", b"1", [], {}, float("nan"), float("inf"), -float("inf")]:
             assert.fails(lambda: invalid in r, "requires integer")
             assert.fails(lambda: invalid not in r, "requires integer")
+            assert.fails(lambda: r.count(invalid), "count: cannot convert")
+            assert.fails(lambda: r.index(invalid), "index: cannot convert")
 
 test_numeric_membership()
 

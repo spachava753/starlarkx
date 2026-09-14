@@ -3986,7 +3986,12 @@ The `x in y` operator, where `y` is a range, accepts an `int` or finite
 An integral float can match an integer element; a non-integral float is never
 a member. No rounding or truncation is performed. Other values, including
 booleans, NaN, and infinities, are dynamic errors even for an empty range.
-Range construction still requires integer arguments.
+Range construction still requires integer arguments. Numeric lookup supports
+the same machine-sized integer values as range construction; larger search
+values do not match.
+
+Ranges also provide [`count`](#range·count) and [`index`](#range·index), using
+the same numeric lookup without iterating the range.
 
 ```python
 1.0 in range(3)                 # True
@@ -4831,6 +4836,43 @@ list("Hello, 世界".elem_ords())        # [72, 101, 108, 108, 111, 44, 32, 228,
 See also: `string·elems`.
 
 <b>Implementation note:</b> `elem_ords` is not provided by the Java implementation.
+
+<a id='range·count'></a>
+### range·count
+
+`R.count(value)` returns `1` if `value` is an element of range `R`, or `0`
+otherwise. It accepts exactly one positional argument: an integer or finite
+float. Integral floats can match integer elements; non-integral floats never
+match. Booleans, nonnumeric values, NaN, and infinities cause an error, even
+when the range is empty.
+
+Like range membership, the method uses direct arithmetic rather than iterating
+the sequence.
+
+```python
+range(0, 10, 2).count(4)                 # 1
+range(0, 10, 2).count(4.0)               # 1
+range(0, 10, 2).count(4.5)               # 0
+range(0).count(0)                       # 0
+```
+
+<a id='range·index'></a>
+### range·index
+
+`R.index(value)` returns the position of `value` in range `R`, or fails if
+there is no matching element. The result is a zero-based index into the
+range, not the element's value. It accepts exactly one positional argument,
+with the same numeric and error rules as [`count`](#range·count). There are
+no optional search bounds.
+
+The method uses direct arithmetic rather than iterating the sequence.
+
+```python
+range(4, 10, 2).index(8)                 # 2
+range(10, 0, -2).index(6.0)              # 2
+range(10)[::-2].index(5)                 # 2
+range(3).index(1.5)                     # error: value not in range
+```
 
 <a id='string·capitalize'></a>
 ### string·capitalize
