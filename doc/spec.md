@@ -3956,11 +3956,20 @@ With two arguments, `range(start, stop)` returns only integers not less than `st
 
 With three arguments, `range(start, stop, step)` returns integers
 formed by successively adding `step` to `start` until the value meets or passes `stop`.
-A call to `range` fails if the value of `step` is zero.
+A call to `range` fails if the value of `step` is zero. Arguments must fit in
+a signed machine integer. Construction also fails if the sequence length
+exceeds the largest signed machine integer (`2^63 - 1` on 64-bit hosts or
+`2^31 - 1` on 32-bit hosts); length calculations do not wrap on overflow.
 
 A call to `range` returns a fixed-size value of type `"range"` that stores the
 parameters defining the sequence.
 The `range` value is iterable and may be indexed efficiently.
+Slicing returns another range without materializing its elements. Slice
+parameters are calculated exactly, even when a derived start, stop, or step
+exceeds machine-integer limits. Such parameters are printed in the range's
+representation, but passing them directly to the `range` constructor still
+requires them to fit in a machine integer. A slice's length never exceeds
+its source's length.
 
 ```python
 list(range(10))                         # [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]

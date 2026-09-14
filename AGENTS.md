@@ -57,6 +57,8 @@ Read any nested `AGENTS.md` before editing files in that directory.
 ## Tests
 
 Prefer an executable `.star` regression for user-visible language behavior.
+Register new corpus files in `TestExecFile` in `starlark/eval_test.go`; that test
+uses an explicit file list rather than discovering all `.star` files.
 Add focused Go unit tests for runtime internals and exported Go APIs.
 
 Useful commands:

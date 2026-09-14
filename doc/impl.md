@@ -250,11 +250,21 @@ assume the result of an ordered comparison is either less than,
 greater than, or equal: it may also fail.
 
 <b>Ranges</b>:
-Ranges store a start, step, and length rather than materialized elements.
-Membership validates the operand as an integer or finite float and rejects
-fractional floats as non-members. For an integer-valued candidate, it checks
-that the offset from the start is divisible by the step and that the resulting
-index is within bounds. No range elements are visited.
+Ranges store parameters and a length rather than materialized elements.
+Ordinary ranges use machine integers. Construction computes length using unsigned
+distances to avoid signed overflow and rejects lengths above the signed machine
+maximum. Slicing derives its length from the selected index interval and computes
+new parameters with exact integer arithmetic. If those parameters exceed machine
+width, an immutable parameter record holds them; otherwise the slice uses the
+ordinary representation. This preserves even tiny slices whose exclusive stop
+or combined step is outside machine bounds.
+
+Membership, `count`, and `index` share a numeric lookup. It validates the operand
+as an integer or finite float and rejects fractional floats as non-members. For
+an integer-valued candidate, it checks that the offset from the start is divisible
+by the step and that the resulting index is within bounds. Ordinary ranges use
+unsigned distances; ranges with oversized parameters use exact integer arithmetic.
+No range elements are visited.
 
 <b>Strings</b>:
 

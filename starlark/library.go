@@ -1172,13 +1172,31 @@ func range_(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 		return nil, nameErr(b, "step argument must not be zero")
 	}
 
-	return rangeValue{start: start, stop: stop, step: step, len: rangeLen(start, stop, step)}, nil
+	n := rangeLen(start, stop, step)
+	if n > uint(^uint(0)>>1) {
+		return nil, nameErr(b, "length exceeds maximum supported integer")
+	}
+	return rangeValue{start: start, stop: stop, step: step, len: int(n)}, nil
 }
 
 // A rangeValue is a comparable, immutable, indexable sequence of integers
 // defined by the three parameters to a range(...) call.
-// Invariant: step != 0.
-type rangeValue struct{ start, stop, step, len int }
+// Invariants: the effective step is nonzero, and 0 <= len <= MaxInt.
+// wide is used only when slice parameters do not fit in machine integers.
+// Its immutable parameters replace start, stop, and step, but not len.
+type rangeValue struct {
+	start, stop, step, len int
+	wide                   *rangeParams
+}
+
+type rangeParams struct{ start, stop, step Int }
+
+func (r rangeValue) params() rangeParams {
+	if r.wide != nil {
+		return *r.wide
+	}
+	return rangeParams{MakeInt(r.start), MakeInt(r.stop), MakeInt(r.step)}
+}
 
 var (
 	_ Indexable  = rangeValue{}
@@ -1192,42 +1210,54 @@ var (
 func (r rangeValue) Attr(name string) (Value, error) { return builtinAttr(r, name, rangeMethods) }
 func (r rangeValue) AttrNames() []string             { return builtinAttrNames(rangeMethods) }
 
-func (r rangeValue) Len() int          { return r.len }
-func (r rangeValue) Index(i int) Value { return MakeInt(r.start + i*r.step) }
+func (r rangeValue) Len() int { return r.len }
+func (r rangeValue) Index(i int) Value {
+	if r.wide != nil {
+		return r.wide.start.Add(r.wide.step.Mul(MakeInt(i)))
+	}
+	// Intermediate products may overflow, but modular arithmetic gives the
+	// exact result: every element is within the original constructor bounds.
+	return MakeInt(int(uint(r.start) + uint(i)*uint(r.step)))
+}
 func (r rangeValue) Iterate() Iterator { return &rangeIterator{r, 0} }
 
-// rangeLen calculates the length of a range with the provided start, stop, and step.
-// caller must ensure that step is non-zero.
-func rangeLen(start, stop, step int) int {
-	switch {
-	case step > 0:
-		if stop > start {
-			return (stop-1-start)/step + 1
-		}
-	case step < 0:
-		if start > stop {
-			return (start-1-stop)/-step + 1
-		}
-	default:
-		panic("rangeLen: zero step")
+// rangeLen calculates the exact length for machine-sized parameters.
+// Unsigned distances accommodate the full span from MinInt to MaxInt.
+// The caller must ensure step != 0 and check the result before converting to int.
+func rangeLen(start, stop, step int) uint {
+	if step > 0 && start < stop {
+		return (uint(stop)-uint(start)-1)/uint(step) + 1
+	}
+	if step < 0 && start > stop {
+		return (uint(start)-uint(stop)-1)/-uint(step) + 1
 	}
 	return 0
 }
 
 func (r rangeValue) Slice(start, end, step int) Value {
-	newStart := r.start + r.step*start
-	newStop := r.start + r.step*end
-	newStep := r.step * step
-	return rangeValue{
-		start: newStart,
-		stop:  newStop,
-		step:  newStep,
-		len:   rangeLen(newStart, newStop, newStep),
+	p := r.params()
+	newStart := p.start.Add(p.step.Mul(MakeInt(start)))
+	newStop := p.start.Add(p.step.Mul(MakeInt(end)))
+	newStep := p.step.Mul(MakeInt(step))
+	// The slice length cannot exceed the already validated source length.
+	s := rangeValue{len: int(rangeLen(start, end, step))}
+	if AsInt(newStart, &s.start) != nil || AsInt(newStop, &s.stop) != nil || AsInt(newStep, &s.step) != nil {
+		s.wide = &rangeParams{newStart, newStop, newStep}
 	}
+	return s
 }
 
 func (r rangeValue) Freeze() {} // immutable
 func (r rangeValue) String() string {
+	if r.wide != nil {
+		p := r.wide
+		if cmp, _ := p.step.Cmp(one, 0); cmp != 0 {
+			return fmt.Sprintf("range(%s, %s, %s)", p.start, p.stop, p.step)
+		} else if p.start.Sign() != 0 {
+			return fmt.Sprintf("range(%s, %s)", p.start, p.stop)
+		}
+		return fmt.Sprintf("range(%s)", p.stop)
+	}
 	if r.step != 1 {
 		return fmt.Sprintf("range(%d, %d, %d)", r.start, r.stop, r.step)
 	} else if r.start != 0 {
@@ -1268,6 +1298,17 @@ func (r rangeValue) indexOf(y Value) (int, error) {
 		return -1, err
 	}
 	if f, ok := y.(Float); ok && math.Trunc(float64(f)) != float64(f) {
+		return -1, nil
+	}
+	if r.wide != nil {
+		delta := i.Sub(r.wide.start)
+		if delta.Mod(r.wide.step).Sign() != 0 {
+			return -1, nil
+		}
+		var index int
+		if AsInt(delta.Div(r.wide.step), &index) == nil && 0 <= index && index < r.len {
+			return index, nil
+		}
 		return -1, nil
 	}
 	var x int
@@ -1329,6 +1370,12 @@ func rangeEqual(x, y rangeValue) bool {
 	}
 	if x.len == 0 {
 		return true // both sequences are empty
+	}
+	if x.wide != nil || y.wide != nil {
+		xp, yp := x.params(), y.params()
+		startEqual, _ := Equal(xp.start, yp.start)
+		stepEqual, _ := Equal(xp.step, yp.step)
+		return startEqual && (x.len == 1 || stepEqual)
 	}
 	if x.start != y.start {
 		return false // first element differs

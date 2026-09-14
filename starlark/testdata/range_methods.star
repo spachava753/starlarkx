@@ -33,4 +33,4 @@ count = range(4, 10, 2).count
 assert.eq(count(6), 1)
 assert.eq(range(3).count(*[1.0], **{}), 1)
 assert.eq(range(3).index(*[1.0], **{}), 1)
-assert.fails(lambda: hash(range(3)), "unhashable")
+assert.fails(lambda: {range(3): None}, "unhashable")
