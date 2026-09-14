@@ -34,6 +34,33 @@ func TestStringMethod(t *testing.T) {
 	}
 }
 
+func TestIntBitMethods(t *testing.T) {
+	for _, value := range []starlark.Int{starlark.MakeInt(13), starlark.MakeInt(-13), starlark.MakeInt(13).Lsh(100)} {
+		value.Freeze()
+		before := value.String()
+		if diff := cmp.Diff([]string{"bit_count", "bit_length"}, value.AttrNames()); diff != "" {
+			t.Fatal(diff)
+		}
+		if attr, err := value.Attr("missing"); attr != nil || err != nil {
+			t.Fatalf("missing attribute = %v, %v", attr, err)
+		}
+		method, err := value.Attr("bit_count")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := starlark.Call(new(starlark.Thread), method, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if eq, _ := starlark.Equal(got, starlark.MakeInt(3)); !eq {
+			t.Errorf("%s.bit_count() = %v, want 3", value, got)
+		}
+		if value.String() != before {
+			t.Errorf("bit_count mutated receiver: %s became %s", before, value)
+		}
+	}
+}
+
 func TestTupleMethods(t *testing.T) {
 	tuple := starlark.Tuple{starlark.NewList([]starlark.Value{starlark.MakeInt(1)})}
 	tuple.Freeze()

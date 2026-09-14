@@ -239,7 +239,8 @@ features that need separate decisions.
 | Methods / String `maketrans` and `translate` | `OPEN` | - | - | - | - |
 | Methods / Tuple `count` and `index` | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `count(value)` and `index(value, start=0, stop=len(T))` using StarlarkX equality, without identity shortcuts or hashing. `index` returns the first match in the half-open interval or fails; negative bounds are relative to the end, and arbitrary-sized integer bounds are clamped. Reject non-integer bounds, including booleans and `None`. Propagate comparison errors. | Add familiar sequence search methods while preserving StarlarkX equality and strict integer arguments. |
 | Methods / Range `count` and `index` | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `count(value)` and `index(value)` using the same exact numeric lookup as range membership. Accept integers and finite floats; integral floats can match, non-integral floats cannot. Reject booleans, nonnumeric values, NaN, and infinities, even on empty ranges. `count` returns zero or one; `index` returns the position or fails if absent. Compute both directly without iterating the range. | Complete range search methods while keeping numeric query rules consistent and efficient. |
-| Methods / Bytes and numeric method surfaces | `OPEN` | - | - | - | - |
+| Methods / Integer `bit_length` and `bit_count` | `STARLARKX` | `DEFAULT` | `YES` | Provide argument-free `bit_length()` and `bit_count()` for arbitrary-precision integers. `bit_length` returns the binary magnitude's width, excluding sign and leading zeros; `bit_count` counts its set bits. Both return zero for zero and use the absolute value for negatives. Do not expose these methods on booleans. | Add exact integer bit queries with Python's numeric results while preserving the separate Boolean type. |
+| Methods / Bytes and remaining numeric method surfaces | `OPEN` | - | - | - | - |
 | Libraries / Python standard library | `OPEN` | - | - | - | - |
 | Dialect / `Set` | `STARLARKX` | `OPTION` | `YES` | Require `FileOptions.Set` for the built-in `set` name, set comprehensions, and set displays, including starred entries. An explicit `FileOptions{}` disables them; `Set: true` enables them. Legacy APIs use `resolve.AllowSet`, which defaults to true. Defining a local name called `set` does not enable set syntax. | Use one existing option for set syntax without changing API defaults or built-in name resolution. |
 | Dialect / `While` | `STARLARK` | `OPTION` | `YES` | Preserve upstream `FileOptions.While`: false rejects `while`, while true permits it inside functions; top-level use additionally requires `TopLevelControl`. Legacy APIs continue deriving it from `resolve.AllowGlobalReassign`. | Require the host to enable `while`, since its condition might never become false. |
@@ -325,6 +326,7 @@ after loading, and easier to check before running.
 | Dictionary views | `keys()`, `values()`, and `items()` return new lists. | They return dynamic view objects. | Divergence |
 | Eager sequence built-ins | `enumerate`, `zip`, and `reversed` return new lists. | They return lazy iterator objects. | Divergence |
 | Range `count` and `index` | Accept exactly one positional integer or finite float, using the same direct arithmetic lookup as membership. `count` returns zero or one; `index` returns the position or fails when absent. Invalid operands are errors even for empty ranges. | The same result for finite numeric operands, but Python permits other values through equality-based search and treats booleans as integers. Non-integer searches can iterate the range. | Aligned finite-number search / operand and Boolean divergence |
+| Integer `bit_length` and `bit_count` | Argument-free queries of the absolute value's binary width and set-bit count, returning zero for zero. Available on integers, not booleans. | Same integer results; booleans inherit both methods from `int`. | Aligned integer methods / Boolean divergence |
 | Range arithmetic limits | Constructor arguments and lengths must fit in signed machine integers; oversized lengths are errors. Slices retain exact derived parameters even beyond machine width, without materializing elements. | Constructor arguments and range lengths may exceed machine width; `len()` raises `OverflowError` if the length exceeds `sys.maxsize`. Slices retain exact parameters. | Construction and length restriction / aligned slice arithmetic |
 | Range hashability | Equal `range` values compare equal but are unhashable. | `range` values are hashable. | Divergence |
 | Range membership | Accepts integers and finite floats using exact numeric membership: `1.0 in range(3)` is true and `1.9 in range(3)` is false. Booleans, other nonnumeric values, NaN, and infinities remain errors, including for empty ranges. | Membership uses equality. These numeric examples agree, but unrelated types, NaN, and infinities produce false; booleans compare as integers. | Aligned finite-number membership / operand and Boolean divergence |
@@ -541,8 +543,9 @@ Built-in type methods are also a subset rather than a compatibility layer:
   the other Python bytes methods are absent. Tuples provide positional-only
   `count` and `index`, using StarlarkX equality and strict integer search bounds.
   Ranges provide `count` and `index` with the same accepted operands as range
-  membership and direct arithmetic lookup. Integers and floats expose no
-  Python-style methods.
+  membership and direct arithmetic lookup. Integers provide `bit_length` and
+  `bit_count` for their absolute values; booleans do not inherit these methods.
+  Other integer methods and Python-style float methods remain absent.
 
 This repository bundles Go modules for JSON, math, time, and protocol buffers,
 but module availability is selected by the embedding application. They are not

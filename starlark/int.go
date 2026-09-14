@@ -63,6 +63,7 @@ var (
 	oneBig    = big.NewInt(1)
 
 	_ HasUnary = Int{}
+	_ HasAttrs = Int{}
 )
 
 // Unary implements the operations +int, -int, and ~int.
@@ -177,6 +178,9 @@ func (i Int) String() string {
 	}
 	return strconv.FormatInt(iSmall, 10)
 }
+func (i Int) Attr(name string) (Value, error) { return builtinAttr(i, name, intMethods) }
+func (i Int) AttrNames() []string             { return builtinAttrNames(intMethods) }
+
 func (i Int) Type() string { return "int" }
 func (i Int) Freeze()      {} // immutable
 func (i Int) Truth() Bool  { return i.Sign() != 0 }

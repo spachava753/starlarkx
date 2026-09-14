@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/bits"
 	"os"
 	"slices"
 	"sort"
@@ -105,6 +106,11 @@ var (
 		"setdefault": NewBuiltin("setdefault", dict_setdefault),
 		"update":     NewBuiltin("update", dict_update),
 		"values":     NewBuiltin("values", dict_values),
+	}
+
+	intMethods = map[string]*Builtin{
+		"bit_count":  NewBuiltin("bit_count", int_bit_count),
+		"bit_length": NewBuiltin("bit_length", int_bit_length),
 	}
 
 	listMethods = map[string]*Builtin{
@@ -2023,6 +2029,43 @@ func dict_values(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 		res[i] = item[1]
 	}
 	return NewList(res), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#int·bit_length
+func int_bit_length(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	small, large := b.Receiver().(Int).get()
+	if large != nil {
+		return MakeInt(large.BitLen()), nil
+	}
+	magnitude := uint64(small)
+	if small < 0 {
+		magnitude = -magnitude
+	}
+	return MakeInt(bits.Len64(magnitude)), nil
+}
+
+// https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#int·bit_count
+func int_bit_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
+		return nil, err
+	}
+	small, large := b.Receiver().(Int).get()
+	if large != nil {
+		count := 0
+		// Bits exposes the absolute value; do not modify its backing words.
+		for _, word := range large.Bits() {
+			count += bits.OnesCount(uint(word))
+		}
+		return MakeInt(count), nil
+	}
+	magnitude := uint64(small)
+	if small < 0 {
+		magnitude = -magnitude
+	}
+	return MakeInt(bits.OnesCount64(magnitude)), nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#tuple·count

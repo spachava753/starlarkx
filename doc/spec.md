@@ -519,6 +519,11 @@ non-zero.
 int("ffff", 16)                 # 65535, 0xffff
 ```
 
+Integers have two methods for inspecting their absolute values:
+
+* [`bit_count`](#int·bit_count)
+* [`bit_length`](#int·bit_length)
+
 ### Floating-point numbers
 
 The Starlark floating-point data type represents an IEEE 754
@@ -4344,6 +4349,38 @@ dictionary.
 ```python
 x = {"one": 1, "two": 2}
 x.values()                              # [1, 2]
+```
+
+<a id='int·bit_count'></a>
+### int·bit_count
+
+`I.bit_count()` returns the number of set bits (ones) in the binary
+representation of `abs(I)`. It returns zero for zero and ignores the sign;
+it does not count bits in a two's-complement representation. The method
+accepts no arguments and works for arbitrarily large integers. Booleans do
+not expose this method.
+
+```python
+(13).bit_count()                        # 3: binary 1101
+(-13).bit_count()                       # 3
+(0).bit_count()                         # 0
+((1 << 100) - 1).bit_count()             # 100
+```
+
+<a id='int·bit_length'></a>
+### int·bit_length
+
+`I.bit_length()` returns the number of bits needed to represent `abs(I)` in
+binary, excluding the sign and leading zeros. For nonzero `I`, the result
+is the unique integer `k` satisfying `2 ** (k - 1) <= abs(I) < 2 ** k`.
+It returns zero for zero. The method accepts no arguments and works for
+arbitrarily large integers. Booleans do not expose this method.
+
+```python
+(13).bit_length()                       # 4
+(-13).bit_length()                      # 4
+(0).bit_length()                        # 0
+(1 << 100).bit_length()                  # 101
 ```
 
 <a id='list·append'></a>

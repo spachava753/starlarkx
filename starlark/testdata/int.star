@@ -2,6 +2,46 @@
 
 load("assert.star", "assert")
 
+# Magnitude bit methods: zero, signs, and representation boundaries.
+assert.eq((0).bit_length(), 0)
+assert.eq((0).bit_count(), 0)
+assert.eq((13).bit_length(), 4)
+assert.eq((13).bit_count(), 3)
+assert.eq((-13).bit_length(), 4)
+assert.eq((-13).bit_count(), 3)
+assert.eq((-1).bit_length(), 1)
+assert.eq((-1).bit_count(), 1)
+
+def test_bit_methods():
+    for exponent in [1, 2, 30, 31, 32, 33, 63, 64, 65, 100, 1009, 10000]:
+        power = int("1" + "0" * exponent, 2)
+        for sign in [1, -1]:
+            assert.eq((sign * (power - 1)).bit_length(), exponent)
+            assert.eq((sign * power).bit_length(), exponent + 1)
+            assert.eq((sign * (power + 1)).bit_length(), exponent + 1)
+            assert.eq((sign * (power - 1)).bit_count(), exponent)
+            assert.eq((sign * power).bit_count(), 1)
+            assert.eq((sign * (power + 1)).bit_count(), 2)
+    for value in range(-100, 101):
+        digits = bin(abs(value))[2:]
+        assert.eq(value.bit_count(), digits.count("1"))
+        assert.eq(value.bit_length(), len(digits.lstrip("0")))
+    for value in [0, 13, -13, (1 << 128) + (1 << 65) + 1]:
+        for method in [value.bit_count, value.bit_length]:
+            assert.fails(lambda: method(0), "arguments")
+            assert.fails(lambda: method(value = 0), "keyword")
+            assert.eq(method(*[], **{}), method())
+
+test_bit_methods()
+assert.eq(dir(0), ["bit_count", "bit_length"])
+assert.eq(getattr(-13, "bit_count")(), 3)
+assert.true(hasattr(1 << 100, "bit_length"))
+assert.true(not hasattr(True, "bit_length"))
+assert.true(not hasattr(False, "bit_count"))
+assert.true(not hasattr(1.0, "bit_count"))
+assert.fails(lambda: True.bit_length(), "no .bit_length")
+assert.fails(lambda: False.bit_count(), "no .bit_count")
+
 # numeric separators
 assert.eq(1_000_000, 1000000)
 assert.eq(0_0_0, 0)
