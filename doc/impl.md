@@ -158,7 +158,8 @@ the compiler supplies the number of targets and the star's index. The evaluator
 collects the iterable, checks the minimum length, and divides the items into a
 fixed prefix, a new rest list, and a fixed suffix.
 
-Both operations release their iterator on success or length errors. Values
+Both operations defer iterator cleanup so it runs on success, errors, and
+panics from host code. Values
 are placed on the operand stack in reverse target order, so the compiler can
 assign targets from left to right. A nested target performs its own unpacking
 when it is reached; assignments already completed remain visible if it fails.

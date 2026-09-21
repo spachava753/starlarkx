@@ -101,6 +101,7 @@ import "github.com/spachava753/starlarkx/starlark"
 
 // Execute Starlark program in a file.
 thread := &starlark.Thread{Name: "my thread"}
+defer thread.Close()
 globals, err := starlark.ExecFile(thread, "fibonacci.star", nil, nil)
 if err != nil { ... }
 

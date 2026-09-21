@@ -2,6 +2,16 @@
 
 Applies to `doc/`. Also follow the [root guide](../AGENTS.md).
 
+## Required: existing documents only; no migration guides
+
+**StarlarkX is a greenfield project, and breaking changes are acceptable.
+Do not write migration guides or backward-compatibility instructions unless
+explicitly requested by the user.**
+
+**Language and design documentation is limited to `spec.md`, `impl.md`, and
+`python-compatibility.md`. Do not create new guides or reports.** Update these
+documents in place; preserve existing README and AGENTS metadata.
+
 Read the surrounding text and match the document's level of detail, voice,
 heading structure, grammar blocks, and example formatting. Integrate a feature
 into the existing explanations instead of appending a standalone report.
@@ -30,6 +40,9 @@ evaluation order, mutation, and errors as they work today. Use runnable examples
 and label examples that intentionally fail. Spell out distinctions such as
 omitted arguments versus `None` when they affect the result.
 
+Follow the existing prose, section structure, grammar blocks, and example style
+strictly. Do not introduce a new organizational style for an individual change.
+
 Keep implementation details in `impl.md`, Python comparisons in the compatibility
 document, and future language work in the decision register. Describe each
 feature in its main section and link to it from other sections.
@@ -43,7 +56,8 @@ the operand stack holds and how iterators are cleaned up.
 Use the source code to verify the explanation, then write at the implementation
 level. Function-by-function walkthroughs, source-file tours, and lists of internal
 identifiers belong in code navigation, not in this document. Explain the design
-without naming concrete Go types or functions unless the name is essential.
+without code examples or concrete code references unless essential to explain
+the algorithm or data structure.
 API migration guides, host setup recipes, and bytecode-version announcements
 also do not belong here; they do not explain an algorithm or data structure.
 

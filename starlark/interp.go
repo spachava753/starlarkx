@@ -636,39 +636,9 @@ loop:
 			n := int(arg)
 			iterable := stack[sp-1]
 			sp--
-			iter := Iterate(iterable)
-			if iter == nil {
-				err = fmt.Errorf("got %s in sequence assignment", iterable.Type())
-				break loop
-			}
-			i := 0
+			err = unpackExact(thread, iterable, stack[sp:sp+n])
 			sp += n
-			for i < n {
-				ok, err2 := iter.Next(thread, &stack[sp-1-i])
-				if err2 != nil {
-					iter.Close()
-					err = err2
-					break loop
-				}
-				if !ok {
-					break
-				}
-				i++
-			}
-			var dummy Value
-			if ok, err2 := iter.Next(thread, &dummy); err2 != nil {
-				iter.Close()
-				err = err2
-				break loop
-			} else if ok {
-				iter.Close()
-				// NB: Len may return -1 here in obscure cases.
-				err = fmt.Errorf("too many values to unpack (got %d, want %d)", Len(iterable), n)
-				break loop
-			}
-			iter.Close()
-			if i < n {
-				err = fmt.Errorf("too few values to unpack (got %d, want %d)", i, n)
+			if err != nil {
 				break loop
 			}
 

@@ -1,5 +1,17 @@
 # StarlarkX Agent Guide
 
+## Required: greenfield development and documentation scope
+
+**This is a greenfield project. Breaking changes are acceptable. Do not add
+backward-compatibility layers, deprecation paths, or migration guides unless
+the user explicitly requests them.**
+
+**Language and design documentation belongs only in `doc/spec.md`,
+`doc/impl.md`, and `doc/python-compatibility.md`. Do not create new guides or
+reports.** Preserve existing README and AGENTS metadata. An API change does not
+justify a migration guide or a new document. These rules do not override the
+language decisions recorded in `doc/python-compatibility.md`.
+
 ## Project Purpose
 
 This repository is StarlarkX, a fork of the Go implementation of Starlark.
@@ -46,10 +58,10 @@ Read any nested `AGENTS.md` before editing files in that directory.
 
 ## Execution lifetime and design scope
 
-- The REPL retains the same `Thread` and globals across evaluations. Reuse that
-  thread as the owner of persistent execution state, including unfinished
-  iterators. Do not introduce a separate session abstraction or cross-thread
-  iterator transfer without a concrete requirement approved by the user.
+- The REPL retains the same `Thread` and globals across evaluations. `Thread`
+  owns persistent REPL context, cancellation, and execution lifetime, including
+  unfinished iterators. Do not introduce an abstraction that supersedes or
+  duplicates this ownership. Do not transfer iterators across threads.
 - Check the existing host and REPL lifecycle before adding a new public type or
   ownership boundary. Prefer extending the existing owner over adding a parallel
   concept for hypothetical use cases.
@@ -98,6 +110,21 @@ warnings as part of that baseline.
 
 Run the narrowest relevant test first, then the full suite before considering a
 change complete. Report any skipped test or known warning explicitly.
+
+## Adversarial review
+
+- After implementing and testing a coherent change, obtain an adversarial code
+  review and resolve material findings before requesting final user review.
+- Include these review criteria in every review brief: substantive correctness,
+  lifecycle and semantic behavior, existing documentation structure, exclusive
+  `Thread` ownership, greenfield scope, and the quality of AGENTS.md changes.
+- Change agent instructions only when observed mistakes expose missing guidance.
+  Keep rules generic and durable; do not add task status, migration notes, or
+  mechanical instruction updates for each change.
+- Challenge speculative abstractions, restructuring, migration work, and minor
+  nits that do not improve correctness or satisfy the user's structural rules.
+- Preserve the user's design-review and commit/push checkpoints. Review approval
+  alone does not authorize publication.
 
 ## Change Hygiene
 

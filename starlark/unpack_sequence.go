@@ -2,6 +2,36 @@ package starlark
 
 import "fmt"
 
+// unpackExact fills the operand slots in reverse target order.
+func unpackExact(thread *Thread, value Value, slots []Value) error {
+	iter := Iterate(value)
+	if iter == nil {
+		return fmt.Errorf("got %s in sequence assignment", value.Type())
+	}
+	defer iter.Close()
+	i := 0
+	for i < len(slots) {
+		ok, err := iter.Next(thread, &slots[len(slots)-1-i])
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
+		i++
+	}
+	var extra Value
+	if ok, err := iter.Next(thread, &extra); err != nil {
+		return err
+	} else if ok {
+		return fmt.Errorf("too many values to unpack (got %d, want %d)", Len(value), len(slots))
+	}
+	if i < len(slots) {
+		return fmt.Errorf("too few values to unpack (got %d, want %d)", i, len(slots))
+	}
+	return nil
+}
+
 // unpackRest collects the input before assigning any target at this level.
 func unpackRest(thread *Thread, value Value, count, before int) ([]Value, error) {
 	iter := Iterate(value)
