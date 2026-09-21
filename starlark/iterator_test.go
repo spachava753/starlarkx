@@ -31,7 +31,10 @@ func TestTupleElements(t *testing.T) {
 			break // skip 3
 		}
 	}
-	for elem := range Elements(tuple) {
+	for elem, err := range Elements(nil, tuple) {
+		if err != nil {
+			t.Fatal(err)
+		}
 		got = append(got, fmt.Sprint(elem))
 		if len(got) == 4 {
 			break // skip 3
@@ -53,7 +56,10 @@ func TestListElements(t *testing.T) {
 			break // skip 3
 		}
 	}
-	for elem := range Elements(list) {
+	for elem, err := range Elements(nil, list) {
+		if err != nil {
+			t.Fatal(err)
+		}
 		got = append(got, fmt.Sprint(elem))
 		if len(got) == 4 {
 			break // skip 3
@@ -78,7 +84,10 @@ func TestSetElements(t *testing.T) {
 			break // skip 3
 		}
 	}
-	for elem := range Elements(set) {
+	for elem, err := range Elements(nil, set) {
+		if err != nil {
+			t.Fatal(err)
+		}
 		got = append(got, fmt.Sprint(elem))
 		if len(got) == 4 {
 			break // skip 3
@@ -92,9 +101,9 @@ func TestSetElements(t *testing.T) {
 
 func TestDictEntries(t *testing.T) {
 	dict := NewDict(2)
-	dict.SetKey(String("one"), MakeInt(1))
-	dict.SetKey(String("two"), MakeInt(2))
-	dict.SetKey(String("three"), MakeInt(3))
+	dict.SetKey(nil, String("one"), MakeInt(1))
+	dict.SetKey(nil, String("two"), MakeInt(2))
+	dict.SetKey(nil, String("three"), MakeInt(3))
 
 	var got []string
 	for k, v := range dict.Entries() {
@@ -103,7 +112,11 @@ func TestDictEntries(t *testing.T) {
 			break // skip 3
 		}
 	}
-	for k, v := range Entries(dict) {
+	for entry, err := range Entries(nil, dict) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		k, v := entry[0], entry[1]
 		got = append(got, fmt.Sprintf("%v %v", k, v))
 		if len(got) == 4 {
 			break // skip 3

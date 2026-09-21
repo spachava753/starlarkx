@@ -26,17 +26,17 @@ type callIterator struct {
 	next   int
 }
 
-func (it *callIterator) Next(p *starlark.Value) bool {
+func (it *callIterator) Next(_ *starlark.Thread, p *starlark.Value) (bool, error) {
 	*it.source.events = append(*it.source.events, "next")
 	if it.next == len(it.source.items) {
-		return false
+		return false, nil
 	}
 	*p = it.source.items[it.next]
 	it.next++
-	return true
+	return true, nil
 }
 
-func (it *callIterator) Done() { *it.source.events = append(*it.source.events, "done") }
+func (it *callIterator) Close() { *it.source.events = append(*it.source.events, "done") }
 
 type callMapping struct {
 	callIterable
@@ -118,7 +118,7 @@ type callLockedMapping struct {
 }
 
 func (m callLockedMapping) Get(key starlark.Value) (starlark.Value, bool, error) {
-	if err := m.Dict.SetKey(key, starlark.None); err == nil || !strings.Contains(err.Error(), "during iteration") {
+	if err := m.Dict.SetKey(nil, key, starlark.None); err == nil || !strings.Contains(err.Error(), "during iteration") {
 		m.t.Fatalf("mutation while expanding: %v", err)
 	}
 	if m.fail {
@@ -130,13 +130,13 @@ func (m callLockedMapping) Get(key starlark.Value) (starlark.Value, bool, error)
 func TestCallMappingMutationLock(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		dict := starlark.NewDict(1)
-		if err := dict.SetKey(starlark.String("x"), starlark.MakeInt(1)); err != nil {
+		if err := dict.SetKey(nil, starlark.String("x"), starlark.MakeInt(1)); err != nil {
 			t.Fatal(err)
 		}
 		globals := starlark.StringDict{
 			"mapping": callLockedMapping{dict, t, fail},
 			"callee": callObserver{starlark.None, func(starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
-				return starlark.None, dict.SetKey(starlark.String("y"), starlark.None)
+				return starlark.None, dict.SetKey(nil, starlark.String("y"), starlark.None)
 			}},
 		}
 		_, err := starlark.EvalOptions(new(syntax.FileOptions), new(starlark.Thread), "call.star", `callee(**mapping)`, globals)
@@ -147,7 +147,7 @@ func TestCallMappingMutationLock(t *testing.T) {
 		} else if err != nil {
 			t.Fatal(err)
 		}
-		if err := dict.SetKey(starlark.String("z"), starlark.None); err != nil {
+		if err := dict.SetKey(nil, starlark.String("z"), starlark.None); err != nil {
 			t.Fatalf("iterator not released: %v", err)
 		}
 	}
@@ -157,7 +157,7 @@ func TestCallArgumentOwnership(t *testing.T) {
 	for _, source := range []string{`callee(*items, **mapping)`, `callee(1, 2, x=3)`} {
 		items := starlark.NewList([]starlark.Value{starlark.MakeInt(1), starlark.MakeInt(2)})
 		mapping := starlark.NewDict(1)
-		if err := mapping.SetKey(starlark.String("x"), starlark.MakeInt(3)); err != nil {
+		if err := mapping.SetKey(nil, starlark.String("x"), starlark.MakeInt(3)); err != nil {
 			t.Fatal(err)
 		}
 		var retained starlark.Tuple

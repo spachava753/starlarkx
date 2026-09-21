@@ -53,65 +53,51 @@ func (s *Set) Elements() iter.Seq[Value] {
 	}
 }
 
-// Elements returns an iterator for the elements of the iterable value.
-//
-// Example of go1.23 iteration:
-//
-//	for elem := range Elements(iterable) { ... }
-//
-// Push iterators are provided as a convenience for Go client code. The
-// core iteration behavior of Starlark for-loops is defined by the
-// [Iterable] interface.
-func Elements(iterable Iterable) iter.Seq[Value] {
-	// Use specialized push iterator if available (*List, Tuple, *Set).
-	type hasElements interface {
-		Elements() iter.Seq[Value]
-	}
-	if iterable, ok := iterable.(hasElements); ok {
-		return iterable.Elements()
-	}
-
-	iter := iterable.Iterate()
-	return func(yield func(Value) bool) {
-		defer iter.Done()
-		var x Value
-		for iter.Next(&x) && yield(x) {
+// Elements returns an error-aware Go iterator over an iterable's values.
+// Each invocation acquires its own cursor. An iteration error is yielded once.
+func Elements(thread *Thread, iterable Iterable) iter.Seq2[Value, error] {
+	return func(yield func(Value, error) bool) {
+		cursor := iterable.Iterate()
+		defer cursor.Close()
+		var value Value
+		for {
+			ok, err := cursor.Next(thread, &value)
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if !ok || !yield(value, nil) {
+				return
+			}
 		}
 	}
 }
 
-// Entries returns an iterator over the entries (key/value pairs) of
-// the iterable mapping.
-//
-// Example of go1.23 iteration:
-//
-//	for k, v := range Entries(mapping) { ... }
-//
-// Push iterators are provided as a convenience for Go client code. The
-// core iteration behavior of Starlark for-loops is defined by the
-// [Iterable] interface.
-func Entries(mapping IterableMapping) iter.Seq2[Value, Value] {
-	// If available (e.g. *Dict), use specialized push iterator,
-	// as it gets k and v in one shot.
-	type hasEntries interface {
-		Entries() iter.Seq2[Value, Value]
-	}
-	if mapping, ok := mapping.(hasEntries); ok {
-		return mapping.Entries()
-	}
-
-	iter := mapping.Iterate()
-	return func(yield func(k, v Value) bool) {
-		defer iter.Done()
-		var k Value
-		for iter.Next(&k) {
-			v, found, err := mapping.Get(k)
-			if err != nil || !found {
-				panic(fmt.Sprintf("Iterate and Get are inconsistent (mapping=%v, key=%v)",
-					mapping.Type(), k.Type()))
+// Entries returns an error-aware Go iterator of key/value tuples.
+func Entries(thread *Thread, mapping IterableMapping) iter.Seq2[Tuple, error] {
+	return func(yield func(Tuple, error) bool) {
+		cursor := mapping.Iterate()
+		defer cursor.Close()
+		var key Value
+		for {
+			ok, err := cursor.Next(thread, &key)
+			if err != nil {
+				yield(nil, err)
+				return
 			}
-			if !yield(k, v) {
-				break
+			if !ok {
+				return
+			}
+			value, found, err := mapping.Get(key)
+			if err == nil && !found {
+				err = fmt.Errorf("mapping has no value for key %s", key)
+			}
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(Tuple{key, value}, nil) {
+				return
 			}
 		}
 	}

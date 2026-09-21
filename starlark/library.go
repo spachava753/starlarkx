@@ -64,6 +64,8 @@ func init() {
 		"hash":      NewBuiltin("hash", hash),
 		"hex":       NewBuiltin("hex", intBase),
 		"int":       NewBuiltin("int", int_),
+		"iter":      NewBuiltin("iter", iter_),
+		"next":      NewBuiltin("next", next_),
 		"len":       NewBuiltin("len", len_),
 		"list":      NewBuiltin("list", list),
 		"map":       NewBuiltin("map", map_),
@@ -241,10 +243,17 @@ func filter(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	if iter == nil {
 		return nil, fmt.Errorf("filter: got %s, want iterable", iterable.Type())
 	}
-	defer iter.Done()
+	defer iter.Close()
 	var result []Value
 	var item Value
-	for iter.Next(&item) {
+	for {
+		ok, err := iter.Next(thread, &item)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		test := item
 		if function != None {
 			var err error
@@ -280,7 +289,7 @@ func abs(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#ascii
-func ascii(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func ascii(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var x Value
 	if err := unpackPositionalArgsNoEscape("ascii", args, kwargs, 1, &x); err != nil {
 		return nil, err
@@ -289,7 +298,7 @@ func ascii(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#bin
-func intBase(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func intBase(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var x Int
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &x); err != nil {
 		return nil, err
@@ -317,9 +326,16 @@ func all(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 		return nil, err
 	}
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		if !x.Truth() {
 			return False, nil
 		}
@@ -334,9 +350,16 @@ func any_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 		return nil, err
 	}
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		if x.Truth() {
 			return True, nil
 		}
@@ -375,10 +398,17 @@ func bytes_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 			buf.Grow(n)
 		}
 		iter := x.Iterate()
-		defer iter.Done()
+		defer iter.Close()
 		var elem Value
 		var b byte
-		for i := 0; iter.Next(&elem); i++ {
+		for i := 0; ; i++ {
+			ok, err := iter.Next(thread, &elem)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				break
+			}
 			if err := AsInt(elem, &b); err != nil {
 				return nil, fmt.Errorf("bytes: at index %d, %s", i, err)
 			}
@@ -393,7 +423,7 @@ func bytes_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#callable
-func callable(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func callable(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var x Value
 	if err := unpackPositionalArgsNoEscape("callable", args, kwargs, 1, &x); err != nil {
 		return nil, err
@@ -424,13 +454,13 @@ func chr(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict
-func dict(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(args) > 1 {
 		return nil, fmt.Errorf("dict: got %d arguments, want at most 1", len(args))
 	}
 	dict := new(Dict)
-	if err := updateDict(dict, args, kwargs); err != nil {
-		return nil, fmt.Errorf("dict: %v", err)
+	if err := updateDict(thread, dict, args, kwargs); err != nil {
+		return nil, nameErr(b, err)
 	}
 	return dict, nil
 }
@@ -457,16 +487,16 @@ func dir(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#divmod
-func divmod(_ *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func divmod(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var x, y Value
 	if err := unpackPositionalArgsNoEscape("divmod", args, kwargs, 2, &x, &y); err != nil {
 		return nil, err
 	}
-	quotient, err := Binary(syntax.SLASHSLASH, x, y)
+	quotient, err := Binary(thread, syntax.SLASHSLASH, x, y)
 	if err != nil {
 		return nil, err
 	}
-	remainder, err := Binary(syntax.PERCENT, x, y)
+	remainder, err := Binary(thread, syntax.PERCENT, x, y)
 	if err != nil {
 		return nil, err
 	}
@@ -482,7 +512,7 @@ func enumerate(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, e
 	}
 
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 
 	var pairs []Value
 	var x Value
@@ -491,7 +521,14 @@ func enumerate(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, e
 		// common case: known length
 		pairs = make([]Value, 0, n)
 		array := make(Tuple, 2*n) // allocate a single backing array
-		for i := 0; iter.Next(&x); i++ {
+		for i := 0; ; i++ {
+			ok, err := iter.Next(thread, &x)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				break
+			}
 			pair := array[:2:2]
 			array = array[2:]
 			pair[0] = MakeInt(start + i)
@@ -500,7 +537,14 @@ func enumerate(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, e
 		}
 	} else {
 		// non-sequence (unknown length)
-		for i := 0; iter.Next(&x); i++ {
+		for i := 0; ; i++ {
+			ok, err := iter.Next(thread, &x)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				break
+			}
 			pair := Tuple{MakeInt(start + i), x}
 			pairs = append(pairs, pair)
 		}
@@ -827,12 +871,19 @@ func list(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 	var elems []Value
 	if iterable != nil {
 		iter := iterable.Iterate()
-		defer iter.Done()
+		defer iter.Close()
 		if n := Len(iterable); n > 0 {
 			elems = make([]Value, 0, n) // preallocate if length known
 		}
 		var x Value
-		for iter.Next(&x) {
+		for {
+			ok, err := iter.Next(thread, &x)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				break
+			}
 			elems = append(elems, x)
 		}
 	}
@@ -870,9 +921,11 @@ func minmax(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	if iter == nil {
 		return nil, fmt.Errorf("%s: %s value is not iterable", b.Name(), iterable.Type())
 	}
-	defer iter.Done()
+	defer iter.Close()
 	var extremum Value
-	if !iter.Next(&extremum) {
+	if ok, err := iter.Next(thread, &extremum); err != nil {
+		return nil, err
+	} else if !ok {
 		if defaultValue != nil {
 			return defaultValue, nil
 		}
@@ -893,7 +946,14 @@ func minmax(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	}
 
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		var key Value
 		if keyFunc == nil {
 			key = x
@@ -947,7 +1007,7 @@ func ord(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#pow
-func pow(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func pow(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var base, exp Value
 	var mod Value = None
 	if err := UnpackArgs(b.Name(), args, kwargs, "base", &base, "exp", &exp, "mod?", &mod); err != nil {
@@ -1338,7 +1398,7 @@ func (r rangeValue) indexOf(y Value) (int, error) {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#range·count
-func range_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func range_count(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
 		return nil, err
@@ -1354,7 +1414,7 @@ func range_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#range·index
-func range_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func range_index(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
 		return nil, err
@@ -1394,18 +1454,18 @@ type rangeIterator struct {
 	i int
 }
 
-func (it *rangeIterator) Next(p *Value) bool {
+func (it *rangeIterator) Next(thread *Thread, p *Value) (bool, error) {
 	if it.i < it.r.len {
 		*p = it.r.Index(it.i)
 		it.i++
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
-func (*rangeIterator) Done() {}
+func (it *rangeIterator) Close() { it.r = rangeValue{}; it.i = 0 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#round
-func round(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func round(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var number Value
 	var ndigits Value = None
 	if err := UnpackArgs(b.Name(), args, kwargs, "number", &number, "ndigits?", &ndigits); err != nil {
@@ -1542,13 +1602,20 @@ func reversed(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, er
 		return nil, err
 	}
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var elems []Value
 	if n := Len(args[0]); n >= 0 {
 		elems = make([]Value, 0, n) // preallocate if length known
 	}
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		elems = append(elems, x)
 	}
 	n := len(elems)
@@ -1567,9 +1634,16 @@ func set(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	set := new(Set)
 	if iterable != nil {
 		iter := iterable.Iterate()
-		defer iter.Done()
+		defer iter.Close()
 		var x Value
-		for iter.Next(&x) {
+		for {
+			ok, err := iter.Next(thread, &x)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				break
+			}
 			if err := set.Insert(x); err != nil {
 				return nil, nameErr(b, err)
 			}
@@ -1597,13 +1671,20 @@ func sorted(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	}
 
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var values []Value
 	if n := Len(iterable); n > 0 {
 		values = make(Tuple, 0, n) // preallocate if length is known
 	}
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		values = append(values, x)
 	}
 
@@ -1696,7 +1777,7 @@ func utf8Transcode(s string) string {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#sum
-func sum(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func sum(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(args) == 0 {
 		return nil, nameErr(b, "requires at least one positional argument")
 	}
@@ -1722,11 +1803,17 @@ func sum(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 
 	total := start
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var item Value
-	for iter.Next(&item) {
-		var err error
-		total, err = Binary(syntax.PLUS, total, item)
+	for {
+		ok, err := iter.Next(thread, &item)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
+		total, err = Binary(thread, syntax.PLUS, total, item)
 		if err != nil {
 			return nil, err
 		}
@@ -1744,13 +1831,20 @@ func tuple(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error
 		return Tuple(nil), nil
 	}
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var elems Tuple
 	if n := Len(iterable); n > 0 {
 		elems = make(Tuple, 0, n) // preallocate if length is known
 	}
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		elems = append(elems, x)
 	}
 	return elems, nil
@@ -1778,7 +1872,7 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 	defer func() {
 		for _, iter := range iters {
 			if iter != nil {
-				iter.Done()
+				iter.Close()
 			}
 		}
 	}()
@@ -1807,7 +1901,9 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 			tuple := array[:cols:cols]
 			array = array[cols:]
 			for j, iter := range iters {
-				iter.Next(&tuple[j])
+				if _, err := iter.Next(thread, &tuple[j]); err != nil {
+					return nil, err
+				}
 			}
 			result[i] = tuple
 		}
@@ -1817,9 +1913,11 @@ func zip(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 		for {
 			tuple := make(Tuple, cols)
 			for i, iter := range iters {
-				if !iter.Next(&tuple[i]) {
+				if ok, err := iter.Next(thread, &tuple[i]); err != nil {
+					return nil, err
+				} else if !ok {
 					if strict {
-						if err := checkStrictIterators("zip", iters, i); err != nil {
+						if err := checkStrictIterators(thread, "zip", iters, i); err != nil {
 							return nil, err
 						}
 					}
@@ -1849,7 +1947,7 @@ func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 	defer func() {
 		for _, iter := range iters {
 			if iter != nil {
-				iter.Done()
+				iter.Close()
 			}
 		}
 	}()
@@ -1864,9 +1962,11 @@ func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 		// A host callable may retain its argument tuple.
 		row := make(Tuple, len(iters))
 		for i, iter := range iters {
-			if !iter.Next(&row[i]) {
+			if ok, err := iter.Next(thread, &row[i]); err != nil {
+				return nil, err
+			} else if !ok {
 				if strict {
-					if err := checkStrictIterators("map", iters, i); err != nil {
+					if err := checkStrictIterators(thread, "map", iters, i); err != nil {
 						return nil, err
 					}
 				}
@@ -1882,14 +1982,16 @@ func map_(thread *Thread, _ *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 }
 
 // checkStrictIterators is called after an iterator ends while building a row.
-func checkStrictIterators(name string, iters []Iterator, exhausted int) error {
+func checkStrictIterators(thread *Thread, name string, iters []Iterator, exhausted int) error {
 	if exhausted > 0 {
 		return fmt.Errorf("%s: iterable #%d is shorter than iterable #1", name, exhausted+1)
 	}
 	// The first iterator ended. Probe the others only until a mismatch is found.
 	var extra Value
 	for i, iter := range iters[1:] {
-		if iter.Next(&extra) {
+		if ok, err := iter.Next(thread, &extra); err != nil {
+			return err
+		} else if ok {
 			return fmt.Errorf("%s: iterable #%d is longer than iterable #1", name, i+2)
 		}
 	}
@@ -1899,7 +2001,7 @@ func checkStrictIterators(name string, iters []Iterator, exhausted int) error {
 // ---- methods of built-in types ---
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·get
-func dict_get(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_get(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var key, dflt Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &key, &dflt); err != nil {
 		return nil, err
@@ -1915,7 +2017,7 @@ func dict_get(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·clear
-func dict_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_clear(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1923,7 +2025,7 @@ func dict_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·copy
-func dict_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_copy(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1936,7 +2038,7 @@ func dict_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·items
-func dict_items(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_items(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1949,7 +2051,7 @@ func dict_items(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·keys
-func dict_keys(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_keys(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1957,7 +2059,7 @@ func dict_keys(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·pop
-func dict_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_pop(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var k, d Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &k, &d); err != nil {
 		return nil, err
@@ -1973,7 +2075,7 @@ func dict_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·popitem
-func dict_popitem(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_popitem(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -1990,7 +2092,7 @@ func dict_popitem(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·setdefault
-func dict_setdefault(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_setdefault(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var key, dflt Value = nil, None
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &key, &dflt); err != nil {
 		return nil, err
@@ -2000,7 +2102,7 @@ func dict_setdefault(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, 
 		return nil, nameErr(b, err)
 	} else if ok {
 		return v, nil
-	} else if err := dict.SetKey(key, dflt); err != nil {
+	} else if err := dict.SetKey(thread, key, dflt); err != nil {
 		return nil, nameErr(b, err)
 	} else {
 		return dflt, nil
@@ -2008,18 +2110,18 @@ func dict_setdefault(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·update
-func dict_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_update(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(args) > 1 {
 		return nil, fmt.Errorf("update: got %d arguments, want at most 1", len(args))
 	}
-	if err := updateDict(b.Receiver().(*Dict), args, kwargs); err != nil {
-		return nil, fmt.Errorf("update: %v", err)
+	if err := updateDict(thread, b.Receiver().(*Dict), args, kwargs); err != nil {
+		return nil, nameErr(b, err)
 	}
 	return None, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#dict·update
-func dict_values(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func dict_values(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2032,7 +2134,7 @@ func dict_values(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#int·bit_length
-func int_bit_length(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func int_bit_length(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2048,7 +2150,7 @@ func int_bit_length(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#int·bit_count
-func int_bit_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func int_bit_count(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2069,7 +2171,7 @@ func int_bit_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, er
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#tuple·count
-func tuple_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func tuple_count(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
 		return nil, err
@@ -2088,7 +2190,7 @@ func tuple_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#tuple·index
-func tuple_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func tuple_index(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(Tuple)
 	var value Value
 	start, stop := zero, MakeInt(len(recv))
@@ -2128,7 +2230,7 @@ func tupleIndexBound(bound Int, n int) int {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·append
-func list_append(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_append(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var object Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &object); err != nil {
 		return nil, err
@@ -2142,7 +2244,7 @@ func list_append(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·clear
-func list_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_clear(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2153,7 +2255,7 @@ func list_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·copy
-func list_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_copy(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2161,7 +2263,7 @@ func list_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·count
-func list_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_count(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
 		return nil, err
@@ -2181,7 +2283,7 @@ func list_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·extend
-func list_extend(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_extend(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
 	var iterable Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &iterable); err != nil {
@@ -2190,12 +2292,14 @@ func list_extend(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 	if err := recv.checkMutable("extend"); err != nil {
 		return nil, nameErr(b, err)
 	}
-	listExtend(recv, iterable)
+	if err := listExtend(thread, recv, iterable); err != nil {
+		return nil, nameErr(b, err)
+	}
 	return None, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·index
-func list_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_index(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value, start_, end_ Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value, &start_, &end_); err != nil {
 		return nil, err
@@ -2218,7 +2322,7 @@ func list_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·insert
-func list_insert(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_insert(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
 	var index int
 	var object Value
@@ -2248,7 +2352,7 @@ func list_insert(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·remove
-func list_remove(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_remove(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver().(*List)
 	var value Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &value); err != nil {
@@ -2269,7 +2373,7 @@ func list_remove(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·pop
-func list_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_pop(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := b.Receiver()
 	list := recv.(*List)
 	n := list.Len()
@@ -2293,7 +2397,7 @@ func list_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#list·reverse
-func list_reverse(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func list_reverse(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2338,7 +2442,7 @@ func list_sort(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·capitalize
-func string_capitalize(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_capitalize(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2359,7 +2463,7 @@ func string_capitalize(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·center
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·ljust
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·rjust
-func string_justify(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_justify(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var width int
 	fill := " "
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &width, &fill); err != nil {
@@ -2398,7 +2502,7 @@ func string_justify(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·expandtabs
-func string_expandtabs(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_expandtabs(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	tabsizeArg := int32(8)
 	if err := UnpackArgs(b.Name(), args, kwargs, "tabsize?", &tabsizeArg); err != nil {
 		return nil, err
@@ -2436,7 +2540,7 @@ func string_expandtabs(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·zfill
-func string_zfill(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_zfill(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var width int
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &width); err != nil {
 		return nil, err
@@ -2469,7 +2573,7 @@ func string_zfill(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 // - codepoints: successive substrings that encode a single Unicode code point.
 // - elem_ords: numeric values of successive bytes
 // - codepoint_ords: numeric values of successive Unicode code points
-func string_iterable(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_iterable(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2484,7 +2588,7 @@ func string_iterable(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, 
 }
 
 // bytes_decode decodes bytes using the supported subset of Python codecs.
-func bytes_decode(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func bytes_decode(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	encoding, errors := "utf-8", "strict"
 	if err := UnpackArgs(b.Name(), args, kwargs,
 		"encoding?", &encoding,
@@ -2604,7 +2708,7 @@ func invalidUTF8Sequence(s string) (size int, reason string) {
 
 // bytes_elems returns an unspecified iterable value whose
 // iterator yields the int values of successive elements.
-func bytes_elems(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func bytes_elems(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2626,19 +2730,19 @@ func (bi bytesIterable) Iterate() Iterator     { return &bytesIterator{bi.bytes}
 
 type bytesIterator struct{ bytes Bytes }
 
-func (it *bytesIterator) Next(p *Value) bool {
+func (it *bytesIterator) Next(thread *Thread, p *Value) (bool, error) {
 	if it.bytes == "" {
-		return false
+		return false, nil
 	}
 	*p = MakeInt(int(it.bytes[0]))
 	it.bytes = it.bytes[1:]
-	return true
+	return true, nil
 }
 
-func (*bytesIterator) Done() {}
+func (it *bytesIterator) Close() { it.bytes = "" }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·count
-func string_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_count(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var sub string
 	var start_, end_ Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &sub, &start_, &end_); err != nil {
@@ -2659,7 +2763,7 @@ func string_count(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isalnum
-func string_isalnum(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isalnum(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2673,7 +2777,7 @@ func string_isalnum(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isalpha
-func string_isalpha(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isalpha(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2687,7 +2791,7 @@ func string_isalpha(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isdigit
-func string_isdigit(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isdigit(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2705,7 +2809,7 @@ func string_isdigit(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isidentifier
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isnumeric
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isprintable
-func string_unicode_predicate(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_unicode_predicate(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2775,7 +2879,7 @@ func isStarlarkIdentifier(s string) bool {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·islower
-func string_islower(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_islower(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2800,7 +2904,7 @@ func isCasedRune(r rune) bool {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isspace
-func string_isspace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isspace(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2814,7 +2918,7 @@ func string_isspace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·istitle
-func string_istitle(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_istitle(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2847,7 +2951,7 @@ func string_istitle(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·isupper
-func string_isupper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_isupper(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2856,27 +2960,34 @@ func string_isupper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·find
-func string_find(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_find(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, true, false)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·index
-func string_index(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_index(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, false, false)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·join
-func string_join(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_join(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var iterable Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &iterable); err != nil {
 		return nil, err
 	}
 	iter := iterable.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	buf := new(strings.Builder)
 	var x Value
-	for i := 0; iter.Next(&x); i++ {
+	for i := 0; ; i++ {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		if i > 0 {
 			buf.WriteString(recv)
 		}
@@ -2892,7 +3003,7 @@ func string_join(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 // Fold is stateless and safe to share across interpreter threads.
 var caseFolder = cases.Fold()
 
-func string_casefold(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_casefold(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2909,7 +3020,7 @@ func string_casefold(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·lower
-func string_lower(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_lower(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -2917,7 +3028,7 @@ func string_lower(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·partition
-func string_partition(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_partition(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var sep string
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &sep); err != nil {
@@ -2947,7 +3058,7 @@ func string_partition(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value,
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·removeprefix
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·removesuffix
-func string_removefix(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_removefix(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var fix string
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &fix); err != nil {
@@ -2962,7 +3073,7 @@ func string_removefix(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value,
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·replace
-func string_replace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_replace(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var old, new string
 	count := -1
@@ -2979,18 +3090,18 @@ func string_replace(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·rfind
-func string_rfind(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_rfind(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, true, true)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·rindex
-func string_rindex(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_rindex(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return string_find_impl(b, args, kwargs, false, true)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·startswith
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·endswith
-func string_startswith(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_startswith(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var x Value
 	var start, end Value = None, None
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &x, &start, &end); err != nil {
@@ -3035,7 +3146,7 @@ func string_startswith(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·strip
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·lstrip
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·rstrip
-func string_strip(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_strip(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var chars string
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &chars); err != nil {
 		return nil, err
@@ -3066,7 +3177,7 @@ func string_strip(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·title
-func string_title(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_title(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -3092,7 +3203,7 @@ func string_title(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·swapcase
-func string_swapcase(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_swapcase(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -3109,7 +3220,7 @@ func string_swapcase(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·upper
-func string_upper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_upper(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -3118,7 +3229,7 @@ func string_upper(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·split
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·rsplit
-func string_split(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_split(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	recv := string(b.Receiver().(String))
 	var sep_ Value
 	maxsplit := -1
@@ -3221,7 +3332,7 @@ func splitspace(s string, max int) []string {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#string·splitlines
-func string_splitlines(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_splitlines(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var keepends bool
 	if err := UnpackArgs(b.Name(), args, kwargs, "keepends?", &keepends); err != nil {
 		return nil, err
@@ -3246,7 +3357,7 @@ func string_splitlines(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·add.
-func set_add(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_add(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var elem Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &elem); err != nil {
 		return nil, err
@@ -3270,7 +3381,7 @@ func set_add(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·clear.
-func set_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_clear(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -3283,7 +3394,7 @@ func set_clear(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·copy.
-func set_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_copy(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -3291,16 +3402,16 @@ func set_copy(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·difference.
-func set_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_difference(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	diff := b.Receiver().(*Set).clone()
-	if err := setDifferenceUpdate(diff, args, kwargs); err != nil {
+	if err := setDifferenceUpdate(thread, diff, args, kwargs); err != nil {
 		return nil, nameErr(b, err)
 	}
 	return diff, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·difference_update.
-func set_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_difference_update(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(kwargs) > 0 {
 		return nil, nameErr(b, "does not accept keyword arguments")
 	}
@@ -3308,15 +3419,15 @@ func set_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (V
 	if err := recv.ht.checkMutable("apply difference_update to"); err != nil {
 		return nil, nameErr(b, err)
 	}
-	if err := setDifferenceUpdate(recv, args, nil); err != nil {
+	if err := setDifferenceUpdate(thread, recv, args, nil); err != nil {
 		return nil, nameErr(b, err)
 	}
 	return None, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·intersection.
-func set_intersection(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	intersection, err := setIntersection(b.Receiver().(*Set), args, kwargs)
+func set_intersection(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	intersection, err := setIntersection(thread, b.Receiver().(*Set), args, kwargs)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
@@ -3324,7 +3435,7 @@ func set_intersection(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value,
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·intersection_update.
-func set_intersection_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_intersection_update(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if len(kwargs) > 0 {
 		return nil, nameErr(b, "does not accept keyword arguments")
 	}
@@ -3332,7 +3443,7 @@ func set_intersection_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) 
 	if err := recv.ht.checkMutable("apply intersection_update to"); err != nil {
 		return nil, nameErr(b, err)
 	}
-	intersection, err := setIntersection(recv, args, nil)
+	intersection, err := setIntersection(thread, recv, args, nil)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
@@ -3349,14 +3460,14 @@ func set_intersection_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) 
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·isdisjoint.
-func set_isdisjoint(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_isdisjoint(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &other); err != nil {
 		return nil, err
 	}
 	iter := other.Iterate()
-	defer iter.Done()
-	disjoint, err := b.Receiver().(*Set).IsDisjoint(iter)
+	defer iter.Close()
+	disjoint, err := b.Receiver().(*Set).IsDisjoint(thread, iter)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
@@ -3364,14 +3475,14 @@ func set_isdisjoint(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set_issubset.
-func set_issubset(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_issubset(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &other); err != nil {
 		return nil, err
 	}
 	iter := other.Iterate()
-	defer iter.Done()
-	diff, err := b.Receiver().(*Set).IsSubset(iter)
+	defer iter.Close()
+	diff, err := b.Receiver().(*Set).IsSubset(thread, iter)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
@@ -3379,14 +3490,14 @@ func set_issubset(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, err
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set_issuperset.
-func set_issuperset(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_issuperset(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 0, &other); err != nil {
 		return nil, err
 	}
 	iter := other.Iterate()
-	defer iter.Done()
-	diff, err := b.Receiver().(*Set).IsSuperset(iter)
+	defer iter.Close()
+	diff, err := b.Receiver().(*Set).IsSuperset(thread, iter)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
@@ -3394,7 +3505,7 @@ func set_issuperset(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, e
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·discard.
-func set_discard(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_discard(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var k Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &k); err != nil {
 		return nil, err
@@ -3417,7 +3528,7 @@ func set_discard(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, erro
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·pop.
-func set_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_pop(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 0); err != nil {
 		return nil, err
 	}
@@ -3434,7 +3545,7 @@ func set_pop(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·remove.
-func set_remove(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_remove(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var k Value
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &k); err != nil {
 		return nil, err
@@ -3448,14 +3559,14 @@ func set_remove(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·symmetric_difference.
-func set_symmetric_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_symmetric_difference(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &other); err != nil {
 		return nil, err
 	}
 	iter := other.Iterate()
-	defer iter.Done()
-	diff, err := b.Receiver().(*Set).SymmetricDifference(iter)
+	defer iter.Close()
+	diff, err := b.Receiver().(*Set).SymmetricDifference(thread, iter)
 	if err != nil {
 		return nil, nameErr(b, err)
 	}
@@ -3463,7 +3574,7 @@ func set_symmetric_difference(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple)
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·symmetric_difference_update.
-func set_symmetric_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_symmetric_difference_update(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var other Iterable
 	if err := unpackPositionalArgsNoEscape(b.Name(), args, kwargs, 1, &other); err != nil {
 		return nil, err
@@ -3476,8 +3587,8 @@ func set_symmetric_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs [
 	var diff *Set
 	if err := func() error {
 		iter := other.Iterate()
-		defer iter.Done()
-		result, err := recv.SymmetricDifference(iter)
+		defer iter.Close()
+		result, err := recv.SymmetricDifference(thread, iter)
 		if err != nil {
 			return err
 		}
@@ -3499,17 +3610,17 @@ func set_symmetric_difference_update(_ *Thread, b *Builtin, args Tuple, kwargs [
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·union.
-func set_union(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func set_union(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	receiverSet := b.Receiver().(*Set).clone()
-	if err := setUpdate(receiverSet, args, kwargs); err != nil {
+	if err := setUpdate(thread, receiverSet, args, kwargs); err != nil {
 		return nil, nameErr(b, err)
 	}
 	return receiverSet, nil
 }
 
 // https://github.com/spachava753/starlarkx/blob/master/doc/spec.md#set·update.
-func set_update(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
-	if err := setUpdate(b.Receiver().(*Set), args, kwargs); err != nil {
+func set_update(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+	if err := setUpdate(thread, b.Receiver().(*Set), args, kwargs); err != nil {
 		return nil, nameErr(b, err)
 	}
 	return None, nil
@@ -3550,13 +3661,13 @@ func string_find_impl(b *Builtin, args Tuple, kwargs []Tuple, allowError, last b
 
 // Common implementation of builtin dict function and dict.update method.
 // Precondition: len(updates) == 0 or 1.
-func updateDict(dict *Dict, updates Tuple, kwargs []Tuple) error {
+func updateDict(thread *Thread, dict *Dict, updates Tuple, kwargs []Tuple) error {
 	if len(updates) == 1 {
 		switch updates := updates[0].(type) {
 		case IterableMapping:
 			// Iterate over dict's key/value pairs, not just keys.
 			for _, item := range updates.Items() {
-				if err := dict.SetKey(item[0], item[1]); err != nil {
+				if err := dict.SetKey(thread, item[0], item[1]); err != nil {
 					return err // dict is frozen
 				}
 			}
@@ -3566,25 +3677,21 @@ func updateDict(dict *Dict, updates Tuple, kwargs []Tuple) error {
 			if iter == nil {
 				return fmt.Errorf("got %s, want iterable", updates.Type())
 			}
-			defer iter.Done()
+			defer iter.Close()
 			var pair Value
-			for i := 0; iter.Next(&pair); i++ {
-				iter2 := Iterate(pair)
-				if iter2 == nil {
-					return fmt.Errorf("dictionary update sequence element #%d is not iterable (%s)", i, pair.Type())
-
+			for i := 0; ; i++ {
+				ok, err := iter.Next(thread, &pair)
+				if err != nil {
+					return err
 				}
-				defer iter2.Done()
-				len := Len(pair)
-				if len < 0 {
-					return fmt.Errorf("dictionary update sequence element #%d has unknown length (%s)", i, pair.Type())
-				} else if len != 2 {
-					return fmt.Errorf("dictionary update sequence element #%d has length %d, want 2", i, len)
+				if !ok {
+					break
 				}
-				var k, v Value
-				iter2.Next(&k)
-				iter2.Next(&v)
-				if err := dict.SetKey(k, v); err != nil {
+				fields, err := dictPair(thread, pair, i)
+				if err != nil {
+					return err
+				}
+				if err := dict.SetKey(thread, fields[0], fields[1]); err != nil {
 					return err
 				}
 			}
@@ -3594,7 +3701,7 @@ func updateDict(dict *Dict, updates Tuple, kwargs []Tuple) error {
 	// Then add the kwargs.
 	before := dict.Len()
 	for _, pair := range kwargs {
-		if err := dict.SetKey(pair[0], pair[1]); err != nil {
+		if err := dict.SetKey(thread, pair[0], pair[1]); err != nil {
 			return err // dict is frozen
 		}
 	}
@@ -3614,7 +3721,38 @@ func updateDict(dict *Dict, updates Tuple, kwargs []Tuple) error {
 	return nil
 }
 
-func setDifferenceUpdate(s *Set, args Tuple, kwargs []Tuple) error {
+// dictPair releases its owned cursor before the next outer element is requested.
+func dictPair(thread *Thread, pair Value, i int) (fields [2]Value, err error) {
+	iter2 := Iterate(pair)
+	if iter2 == nil {
+		return fields, fmt.Errorf("dictionary update sequence element #%d is not iterable (%s)", i, pair.Type())
+	}
+	defer iter2.Close()
+	n := Len(pair)
+	if n >= 0 && n != 2 {
+		return fields, fmt.Errorf("dictionary update sequence element #%d has length %d, want 2", i, n)
+	}
+	for j := range fields {
+		ok, err := iter2.Next(thread, &fields[j])
+		if err != nil {
+			return fields, err
+		}
+		if !ok {
+			return fields, fmt.Errorf("dictionary update sequence element #%d has length %d, want 2", i, j)
+		}
+	}
+	if n < 0 {
+		var extra Value
+		if ok, err := iter2.Next(thread, &extra); err != nil {
+			return fields, err
+		} else if ok {
+			return fields, fmt.Errorf("dictionary update sequence element #%d has more than 2 elements", i)
+		}
+	}
+	return fields, nil
+}
+
+func setDifferenceUpdate(thread *Thread, s *Set, args Tuple, kwargs []Tuple) error {
 	if len(kwargs) > 0 {
 		return errors.New("does not accept keyword arguments")
 	}
@@ -3632,9 +3770,16 @@ func setDifferenceUpdate(s *Set, args Tuple, kwargs []Tuple) error {
 		}
 		if err := func() error {
 			iter := iterable.Iterate()
-			defer iter.Done()
+			defer iter.Close()
 			var elem Value
-			for iter.Next(&elem) {
+			for {
+				ok, err := iter.Next(thread, &elem)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					break
+				}
 				if _, err := s.Delete(elem); err != nil {
 					return err
 				}
@@ -3647,7 +3792,7 @@ func setDifferenceUpdate(s *Set, args Tuple, kwargs []Tuple) error {
 	return nil
 }
 
-func setIntersection(s *Set, args Tuple, kwargs []Tuple) (*Set, error) {
+func setIntersection(thread *Thread, s *Set, args Tuple, kwargs []Tuple) (*Set, error) {
 	if len(kwargs) > 0 {
 		return nil, errors.New("does not accept keyword arguments")
 	}
@@ -3660,8 +3805,8 @@ func setIntersection(s *Set, args Tuple, kwargs []Tuple) (*Set, error) {
 		}
 		if err := func() error {
 			iter := iterable.Iterate()
-			defer iter.Done()
-			result, err := intersection.Intersection(iter)
+			defer iter.Close()
+			result, err := intersection.Intersection(thread, iter)
 			if err != nil {
 				return err
 			}
@@ -3674,7 +3819,7 @@ func setIntersection(s *Set, args Tuple, kwargs []Tuple) (*Set, error) {
 	return intersection, nil
 }
 
-func setUpdate(s *Set, args Tuple, kwargs []Tuple) error {
+func setUpdate(thread *Thread, s *Set, args Tuple, kwargs []Tuple) error {
 	if len(kwargs) > 0 {
 		return errors.New("does not accept keyword arguments")
 	}
@@ -3686,8 +3831,8 @@ func setUpdate(s *Set, args Tuple, kwargs []Tuple) error {
 		}
 		if err := func() error {
 			iter := iterable.Iterate()
-			defer iter.Done()
-			return s.InsertAll(iter)
+			defer iter.Close()
+			return s.InsertAll(thread, iter)
 		}(); err != nil {
 			return err
 		}
@@ -3699,5 +3844,11 @@ func setUpdate(s *Set, args Tuple, kwargs []Tuple) error {
 // nameErr returns an error message of the form "name: msg"
 // where name is b.Name() and msg is a string or error.
 func nameErr(b *Builtin, msg any) error {
+	if err, ok := msg.(*EvalError); ok {
+		return err // Preserve the suspended generator's original traceback.
+	}
+	if err, ok := msg.(error); ok {
+		return fmt.Errorf("%s: %w", b.Name(), err)
+	}
 	return fmt.Errorf("%s: %v", b.Name(), msg)
 }

@@ -205,11 +205,14 @@ func (ht *hashtable) lookup(k Value) (v Value, found bool, err error) {
 }
 
 // count returns the number of distinct elements of iter that are elements of ht.
-func (ht *hashtable) count(iter Iterator) (int, error) {
+func (ht *hashtable) count(thread *Thread, iter Iterator) (int, error) {
 	if ht.table == nil {
 		return 0, nil // empty
 	}
 
+	// Advancing iter may execute a generator that tries to resize this table.
+	guard := ht.iterate()
+	defer guard.Close()
 	var k Value
 	count := 0
 
@@ -221,7 +224,14 @@ func (ht *hashtable) count(iter Iterator) (int, error) {
 	for i := range bitsets {
 		bitsets[i].SetBits(storage[i : i+1 : i+1])
 	}
-	for iter.Next(&k) && count != int(ht.len) {
+	for {
+		ok, err := iter.Next(thread, &k)
+		if err != nil {
+			return 0, err
+		}
+		if !ok || count == int(ht.len) {
+			break
+		}
 		h, err := k.Hash()
 		if err != nil {
 			return 0, err // unhashable
@@ -406,19 +416,23 @@ type keyIterator struct {
 	e  *entry
 }
 
-func (it *keyIterator) Next(k *Value) bool {
+func (it *keyIterator) Next(thread *Thread, k *Value) (bool, error) {
 	if it.e != nil {
 		*k = it.e.key
 		it.e = it.e.next
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-func (it *keyIterator) Done() {
+func (it *keyIterator) Close() {
+	if it.ht == nil {
+		return
+	}
 	if !it.ht.frozen {
 		it.ht.itercount--
 	}
+	it.ht, it.e = nil, nil
 }
 
 // entries is a go1.23 iterator over the entries of the hash table.

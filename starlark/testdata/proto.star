@@ -39,6 +39,32 @@ assert.eq(dict(m.map_field), {"d": "D", "e": "E"})
 m.map_field = None
 assert.eq(dict(m.map_field), {})
 
+# Generator-backed field conversion uses the consuming thread and propagates errors.
+def generated_strings():
+    yield "first"
+    yield "second"
+
+def broken_strings():
+    yield "first"
+    fail("protobuf generator failed")
+
+def test_generator_fields():
+    message = schema.Test(repeated_field=generated_strings())
+    assert.eq(list(message.repeated_field), ["first", "second"])
+    message.repeated_field = generated_strings()
+    assert.eq(list(message.repeated_field), ["first", "second"])
+    assert.fails(lambda: schema.Test(repeated_field=broken_strings()), "protobuf generator failed")
+    def assign_broken():
+        message.repeated_field = broken_strings()
+    assert.fails(assign_broken, "protobuf generator failed")
+    field = message.repeated_field
+    cursor = iter(field)
+    assert.fails(lambda: field.append("locked"), "during iteration")
+    cursor.close()
+    field.append("unlocked")
+
+test_generator_fields()
+
 # list ordering of keys
 m.map_field = {"a": "A", "b": "B", "c": "C"}
 assert.eq(list(m.map_field), ["a", "b", "c"])

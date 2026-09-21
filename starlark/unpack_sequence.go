@@ -3,15 +3,22 @@ package starlark
 import "fmt"
 
 // unpackRest collects the input before assigning any target at this level.
-func unpackRest(value Value, count, before int) ([]Value, error) {
+func unpackRest(thread *Thread, value Value, count, before int) ([]Value, error) {
 	iter := Iterate(value)
 	if iter == nil {
 		return nil, fmt.Errorf("got %s in sequence assignment", value.Type())
 	}
-	defer iter.Done()
+	defer iter.Close()
 	var items []Value
 	var item Value
-	for iter.Next(&item) {
+	for {
+		ok, err := iter.Next(thread, &item)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		items = append(items, item)
 	}
 	if len(items) < count-1 {

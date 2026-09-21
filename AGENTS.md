@@ -44,6 +44,19 @@ Read any nested `AGENTS.md` before editing files in that directory.
 - Update `doc/spec.md`, the compatibility decision register, and the inventory
   whenever a language change alters their claims.
 
+## Execution lifetime and design scope
+
+- The REPL retains the same `Thread` and globals across evaluations. Reuse that
+  thread as the owner of persistent execution state, including unfinished
+  iterators. Do not introduce a separate session abstraction or cross-thread
+  iterator transfer without a concrete requirement approved by the user.
+- Check the existing host and REPL lifecycle before adding a new public type or
+  ownership boundary. Prefer extending the existing owner over adding a parallel
+  concept for hypothetical use cases.
+- When asked to correct an implementation, make the correction and verify it.
+  A proposal or acknowledgement is not completion. Describe changes as completed
+  only after they have actually been made.
+
 ## Go Conventions
 
 - Follow the existing direct, low-abstraction Go style.

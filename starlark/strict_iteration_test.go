@@ -38,23 +38,23 @@ type strictIterator struct {
 	cursor *int
 }
 
-func (it *strictIterator) Next(p *starlark.Value) bool {
+func (it *strictIterator) Next(_ *starlark.Thread, p *starlark.Value) (bool, error) {
 	s := it.source
 	*s.events = append(*s.events, s.name+".next")
 	if *it.cursor == s.n {
-		return false
+		return false, nil
 	}
 	*p = starlark.MakeInt(*it.cursor)
 	*it.cursor++
-	return true
+	return true, nil
 }
 
-func (it *strictIterator) Done() {
+func (it *strictIterator) Close() {
 	*it.source.events = append(*it.source.events, it.source.name+".done")
 }
 
 func TestStrictIterationOrder(t *testing.T) {
-	// Next/callback order verified against CPython 3.14.7. Done is StarlarkX-specific.
+	// Next/callback order verified against CPython 3.14.7. Close is StarlarkX-specific.
 	for _, test := range []struct {
 		lengths          [3]int
 		wantError, steps string

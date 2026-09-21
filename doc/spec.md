@@ -112,7 +112,7 @@ and            elif           in             or
 break          else           lambda         pass
 continue       for            load           return
 def            if             not            while
-del
+del            yield
 ```
 
 The tokens below also may not be used as identifiers although they do not
@@ -125,7 +125,7 @@ as              except          nonlocal
 assert          finally         raise
 async           from            try
 await           global          with
-class           import          yield
+class           import
 is
 ```
 <!-- NB: bazelbuild/starlark puts `while` in the second list -->
@@ -416,6 +416,8 @@ tuple                        # an unmodifiable sequence of values
 dict                         # a mapping from values to values
 set                          # a set of values
 function                     # a function implemented in Starlark
+iterator                     # an iterable that produces each element once
+generator                    # an iterator defined by Starlark code
 builtin_function_or_method   # a function or method implemented by the interpreter or host application
 ```
 
@@ -1008,6 +1010,87 @@ not enable set syntax. The command's
 `-set` flag is obsolete and has no effect.
 
 
+### Iterators and generators
+
+An iterator produces the elements of an iterable one at a time.
+The built-in [`iter`](#iter) function creates an iterator, and
+[`next`](#next) returns its next element.
+The [type](#type) of an iterator is `"iterator"`.
+
+A generator is an iterator defined by a [generator expression](#generator-expressions)
+or a function containing a [`yield` statement](#yield-statements).
+It executes only when its next element is requested, and suspends execution
+when it yields a value. The type of a generator is `"generator"`.
+
+Iterators and generators are iterable, so they may be used in `for` loops,
+comprehensions, and built-in functions that accept iterables.
+Iteration continues from the current position; it does not start again.
+An iterator with no remaining elements is _exhausted_.
+
+```python
+it = iter([10, 20, 30])
+next(it)                                # 10
+list(it)                                # [20, 30]
+next(it, None)                          # None
+```
+
+Ending a loop over an iterator or generator does not close it.
+A later loop or call to `next` continues where the earlier one stopped.
+This also applies to built-in functions that stop before exhausting their input,
+and to loops or calls that end with an error.
+
+```python
+def first_two(it):
+    for first in it:
+        break
+    return first, next(it)
+
+first_two(iter([10, 20, 30]))           # (10, 20)
+```
+
+An iterator over a mutable collection prevents changes to that collection
+until the iterator is exhausted or closed, even while no loop is running.
+A loop over a collection creates its own iterator and closes it when the
+loop ends, including on a break or error. A loop over an existing iterator
+does not close that iterator.
+
+An error while advancing a generator ends its execution and is reported to
+its caller. Later attempts to advance it report the same error, rather than
+exhaustion. It is an error to advance or close a generator while it is executing.
+
+Iterators and generators have no length and do not support indexing or slicing.
+They are not hashable. Two iterators or generators compare equal only if they
+are the same value; ordering comparisons are not defined.
+The `in` and `not in` operators consume elements until a match is found or the
+iterator is exhausted.
+
+An iterator or generator used in a Boolean context is always considered true,
+even when exhausted. Testing its truth value does not consume an element.
+
+Iterators and generators have one method:
+
+* [`close`](#iterator·close)
+
+Each iterator or generator belongs to the thread that created it.
+Successive evaluations on that thread, such as commands in a REPL, may resume
+it using the thread's current execution limits and host callbacks.
+It is an error to advance or close it from another thread.
+An unrelated evaluation error does not close the thread's other iterators.
+
+The host closes the thread after its final evaluation. This closes its
+unfinished iterators and generators without executing their remaining code.
+Losing the last program reference to an iterator does not close it.
+For example, partially consuming a temporary generator can prevent changes to
+its input collection until the thread is closed. A closed thread cannot
+execute further evaluations.
+
+[Freezing](#freezing-a-value) an iterator or generator closes it and freezes
+the values it retains. Attempts to advance it then fail, even if `next` was
+given a default value. Freezing does not execute the remaining generator code.
+If a host callback freezes a running generator, that generator fails rather
+than continuing after the callback. Module initialization freezes global
+values as usual; REPL commands do not implicitly freeze them.
+
 ### Functions
 
 A function value represents a function defined in Starlark.
@@ -1594,7 +1677,8 @@ Each is listed below using the name of its corresponding interface in
 the interpreter's Go API.
 
 * `Iterable`: an _iterable_ value lets us process each of its elements in a fixed order.
-  Examples: `dict`, `set`, `list`, `tuple`, and `range`, but not `string` or `bytes`.
+  Examples: `dict`, `set`, `list`, `tuple`, `range`, `iterator`, and `generator`,
+  but not `string` or `bytes`.
 * `Sequence`: a _sequence of known length_ lets us know how many elements it
   contains without processing them.
   Examples: `dict`, `set`, `list`, `tuple`, and `range`, but not `string` or `bytes`.
@@ -1605,10 +1689,9 @@ the interpreter's Go API.
   element at a given integer index. Example: `list`.
 * `Mapping`: a mapping is an association of keys to values. Example: `dict`.
 
-Although all of Starlark's core data types for sequences implement at
-least the `Sequence` contract, it's possible for an application
-that embeds the Starlark interpreter to define additional data types
-representing sequences of unknown length that implement only the `Iterable` contract.
+Iterators and generators are iterable but have no known length.
+Applications that embed the Starlark interpreter may also define iterable
+types of unknown length.
 
 Strings and bytes are not iterable, though they do support `len(s)` and
 `s[i]` operations. Starlark deviates from Python here to avoid a common
@@ -1728,14 +1811,14 @@ PrimaryExpr = Operand
 
 Operand = identifier
         | int | float | string | bytes | fstring
-        | ListExpr | ListComp
+        | ListExpr | ListComp | GeneratorExpr
         | DictExpr | DictComp | SetExpr | SetComp
         | '(' [DisplayEntries [',']] ')'
         | ('-' | '+') PrimaryExpr
         .
 
 DotSuffix   = '.' (identifier | 'load') .
-CallSuffix  = '(' [Arguments [',']] ')' .
+CallSuffix  = '(' ([Arguments [',']] | GeneratorBody) ')' .
 SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
 ```
 
@@ -2380,6 +2463,49 @@ Example:
 "yes" if enabled else "no"
 ```
 
+### Generator expressions
+
+A generator expression creates a [generator](#iterators-and-generators)
+that evaluates a body expression for successive elements of one or more iterables.
+It consists of the body followed by `for` and `if` clauses, enclosed in parentheses.
+The clauses act like nested loops and conditions, as in a [comprehension](#comprehensions).
+
+```grammar {.good}
+GeneratorBody = Test 'for' LoopVariables 'in' Test {CompClause} .
+GeneratorExpr = '(' GeneratorBody ')' .
+```
+
+The iterable expression of the first `for` clause is evaluated immediately,
+and an iterator over its value is created without consuming an element.
+If the value is not iterable, evaluation fails. The body, conditions, and
+remaining iterable expressions are evaluated only when an element is
+requested from the generator.
+
+```python
+g = (x * x for x in range(5) if x % 2 == 0)
+next(g)                                 # 0
+list(g)                                 # [4, 16]
+```
+
+The iteration variables are local to the generator expression and do not
+change variables in the enclosing scope. A function defined within the
+expression refers to these variables, not copies of their values at the time
+the function was defined.
+
+Parentheses may be omitted when the generator expression is the sole argument
+to a function call. A trailing comma or another argument requires parentheses
+around the generator expression.
+
+```python
+sum(x * x for x in range(5))            # 30
+sum((x * x for x in range(5)), 10)      # 40
+```
+
+If the first iterable is a mutable collection, the generator prevents changes
+to it from the time the expression is evaluated until iteration ends or the
+generator is closed. If it is an existing iterator, closing the generator
+does not close that iterator.
+
 ### Comprehensions
 
 A comprehension constructs a new list, dictionary, or set value by looping
@@ -2503,7 +2629,7 @@ x = ([1, 2], [3, 4], [5, 6])
 ### Function and method calls
 
 ```grammar {.good}
-CallSuffix = '(' [Arguments [',']] ')' .
+CallSuffix = '(' ([Arguments [',']] | GeneratorBody) ')' .
 
 Arguments = Argument {',' Argument} .
 Argument  = Test | identifier '=' Test | '*' Test | '**' Test .
@@ -2794,7 +2920,7 @@ twice = lambda x: x * 2
 ```grammar {.good}
 Statement  = DefStmt | IfStmt | ForStmt | SimpleStmt .
 SimpleStmt = SmallStmt {';' SmallStmt} [';'] '\n' .
-SmallStmt  = ReturnStmt
+SmallStmt  = ReturnStmt | YieldStmt
            | BreakStmt | ContinueStmt | PassStmt
            | AssignStmt | DelStmt
            | ExprStmt
@@ -3140,6 +3266,47 @@ current module.
 <!-- this is too implementation-oriented; it's not a spec. -->
 
 
+### Yield statements
+
+A `yield` statement suspends execution of a function and produces a value
+for the caller requesting the generator's next element.
+
+```grammar {.good}
+YieldStmt = 'yield' [Expression] .
+```
+
+A yield statement may have zero, one, or more result expressions separated
+by commas. With no expressions it produces `None`; with one expression it
+produces that expression's value; with multiple expressions it produces a tuple.
+
+A function containing a yield statement is a _generator function_, even if
+execution never reaches the statement. A yield statement in a nested function
+does not make the enclosing function a generator function.
+Calling a generator function assigns arguments to parameters as usual, but
+returns a [generator](#iterators-and-generators) without executing the body.
+
+When its first element is requested, the generator starts executing the body.
+Each yield statement suspends execution until another element is requested.
+Execution then continues after the yield statement, with local variables and
+loops unchanged. A `return` statement without a value, or reaching the end of
+the body, exhausts the generator. Returning a value from a generator is an error.
+
+```python
+def values():
+    yield 10
+    yield
+    yield 20
+
+g = values()
+next(g)                                 # 10
+next(g, "end")                          # None
+list(g)                                 # [20]
+next(g, "end")                          # "end"
+```
+
+A yield statement must appear within a function. It cannot be used as an
+expression, and `yield from` is not supported.
+
 ### Return statements
 
 A `return` statement ends the execution of a function and returns a
@@ -3152,6 +3319,8 @@ ReturnStmt = 'return' [Expression] .
 A return statement may have zero, one, or more
 result expressions separated by commas.
 With no expressions, the function has the result `None`.
+In a [generator function](#yield-statements), only this form is permitted,
+and it ends iteration instead of returning a value.
 With a single expression, the function's result is the value of that expression.
 With multiple expressions, the function's result is a tuple.
 
@@ -3557,8 +3726,10 @@ See also: `ord`.
 
 `dict` creates a dictionary.  It accepts up to one positional
 argument, which is interpreted as an iterable of two-element
-sequences (pairs), each specifying a key/value pair in
-the resulting dictionary.
+iterables (pairs), each specifying a key/value pair in
+the resulting dictionary. Each pair may itself be an iterator or generator.
+If its length is unknown, `dict` reads at most three elements to check that
+there are exactly two. An error while reading a pair prevents its insertion.
 
 `dict` also accepts any number of keyword arguments, each of which
 specifies a key/value pair in the resulting dictionary;
@@ -3767,6 +3938,22 @@ int("0b1", 0)           # 1
 int("0x11")             # error: invalid literal with base 10
 ```
 
+### iter
+
+`iter(x)` returns an iterator over the elements of x.
+It accepts exactly one positional argument, which must be iterable.
+If x is already an iterator or generator, the result is x.
+Otherwise, it creates a new iterator without consuming any elements.
+
+```python
+it = iter(range(3))
+next(it)                                # 0
+list(it)                                # [1, 2]
+iter("abc")                             # error: string is not iterable
+```
+
+See also: [iterators and generators](#iterators-and-generators), [`next`](#next).
+
 ### len
 
 `len(x)` returns the number of elements in its argument.
@@ -3856,6 +4043,26 @@ min("two", "three", "four", key=len)            # "two", the shortest
 min([], default=0)                               # 0
 ```
 
+
+### next
+
+`next(iterator[, default])` returns the next element of an iterator or generator.
+Both arguments are positional-only. The first argument must be an iterator
+or generator, not merely an iterable such as a list.
+
+If the iterator is exhausted, `next` returns the default value if one was
+supplied; otherwise it fails. An error while obtaining the next element is
+reported even if a default was supplied. A yielded `None` is an ordinary
+element, not an indication of exhaustion.
+
+```python
+it = iter([None])
+next(it, "end")                         # None
+next(it, "end")                         # "end"
+next(it)                                # error: iterator exhausted
+```
+
+See also: [`iter`](#iter).
 
 ### oct
 
@@ -4382,6 +4589,31 @@ arbitrarily large integers. Booleans do not expose this method.
 (0).bit_length()                        # 0
 (1 << 100).bit_length()                  # 101
 ```
+
+<a id='iterator·close'></a>
+### iterator·close
+
+`I.close()` closes the iterator or generator I and returns `None`.
+It accepts no arguments. Closing an exhausted or already closed iterator
+has no effect. A closed iterator is exhausted, unless it previously failed;
+closing a failed iterator does not erase its error.
+
+Closing an iterator ends its iteration over a collection. The collection
+may be changed once no active iterators remain. Closing a generator ends
+its active loops without executing the remaining body. It does not close
+an existing iterator supplied to one of those loops.
+
+```python
+items = [1, 2, 3]
+it = iter(items)
+next(it)                                # 1
+it.close()                              # None
+items.append(4)                         # None
+next(it, "end")                         # "end"
+```
+
+It is an error to close an iterator from a different thread or to close a
+generator while it is executing.
 
 <a id='list·append'></a>
 ### list·append

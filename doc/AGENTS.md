@@ -2,7 +2,9 @@
 
 Applies to `doc/`. Also follow the [root guide](../AGENTS.md).
 
-Read the surrounding text and match the document's level of detail.
+Read the surrounding text and match the document's level of detail, voice,
+heading structure, grammar blocks, and example formatting. Integrate a feature
+into the existing explanations instead of appending a standalone report.
 
 ## Voice
 
@@ -40,8 +42,10 @@ the operand stack holds and how iterators are cleaned up.
 
 Use the source code to verify the explanation, then write at the implementation
 level. Function-by-function walkthroughs, source-file tours, and lists of internal
-identifiers belong in code navigation, not in this document. Mention a specific
-API only when it is necessary to understand the design being explained.
+identifiers belong in code navigation, not in this document. Explain the design
+without naming concrete Go types or functions unless the name is essential.
+API migration guides, host setup recipes, and bytecode-version announcements
+also do not belong here; they do not explain an algorithm or data structure.
 
 Update this document when a feature adds or changes something worth explaining
 about the implementation. A built-in using existing mechanisms may need only a

@@ -297,7 +297,7 @@ func setFieldStarlark(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, fmt.Errorf("%s: %v does not have field %v", fn.Name(), m.desc().FullName(), field)
 	}
 
-	return starlark.None, setField(m.msg, field.Desc, v)
+	return starlark.None, setField(thread, m.msg, field.Desc, v)
 }
 
 // get_field(msg, field) retrieves the value of a field.
@@ -365,12 +365,12 @@ func (d MessageDescriptor) CallInternal(thread *starlark.Thread, args starlark.T
 	}
 
 	// Convert named arguments to field values.
-	err := setFields(dest.msg, kwargs)
+	err := setFields(thread, dest.msg, kwargs)
 	return dest, err
 }
 
 // setFields updates msg as if by msg.name=value for each (name, value) in items.
-func setFields(msg protoreflect.Message, items []starlark.Tuple) error {
+func setFields(thread *starlark.Thread, msg protoreflect.Message, items []starlark.Tuple) error {
 	for _, item := range items {
 		name, ok := starlark.AsString(item[0])
 		if !ok {
@@ -380,7 +380,7 @@ func setFields(msg protoreflect.Message, items []starlark.Tuple) error {
 		if err != nil {
 			return err
 		}
-		if err := setField(msg, fdesc, item[1]); err != nil {
+		if err := setField(thread, msg, fdesc, item[1]); err != nil {
 			return err
 		}
 	}
@@ -389,7 +389,7 @@ func setFields(msg protoreflect.Message, items []starlark.Tuple) error {
 
 // setField validates a Starlark field value, converts it to canonical form,
 // and assigns to the field of msg.  If value is None, the field is unset.
-func setField(msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, value starlark.Value) error {
+func setField(thread *starlark.Thread, msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, value starlark.Value) error {
 	// None unsets a field.
 	if value == starlark.None {
 		msg.Clear(fdesc)
@@ -408,15 +408,22 @@ func setField(msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, valu
 		if iter == nil {
 			return fmt.Errorf("got %s for .%s field, want iterable", value.Type(), fdesc.Name())
 		}
-		defer iter.Done()
+		defer iter.Close()
 
 		list := msg.Mutable(fdesc).List()
 		list.Truncate(0)
 		var x starlark.Value
-		for i := 0; iter.Next(&x); i++ {
-			v, err := toProto(fdesc, x)
+		for i := 0; ; i++ {
+			ok, err := iter.Next(thread, &x)
 			if err != nil {
-				return fmt.Errorf("index %d: %v", i, err)
+				return err
+			}
+			if !ok {
+				break
+			}
+			v, err := toProto(thread, fdesc, x)
+			if err != nil {
+				return fmt.Errorf("index %d: %w", i, err)
 			}
 			list.Append(v)
 		}
@@ -430,15 +437,22 @@ func setField(msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, valu
 		}
 
 		iter := mapping.Iterate()
-		defer iter.Done()
+		defer iter.Close()
 
 		// Each value is converted using toProto as usual, passing the key/value
 		// field descriptors to check their types.
 		msg.Clear(fdesc)
 		mutMap := msg.Mutable(fdesc).Map()
 		var k starlark.Value
-		for iter.Next(&k) {
-			kproto, err := toProto(fdesc.MapKey(), k)
+		for {
+			ok, err := iter.Next(thread, &k)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				break
+			}
+			kproto, err := toProto(thread, fdesc.MapKey(), k)
 			if err != nil {
 				return fmt.Errorf("in key of map field %s: %w", fdesc.Name(), err)
 			}
@@ -452,7 +466,7 @@ func setField(msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, valu
 				return fmt.Errorf("in map field %s, at key %s: %w", fdesc.Name(), k.String(), err)
 			}
 
-			vproto, err := toProto(fdesc.MapValue(), v)
+			vproto, err := toProto(thread, fdesc.MapValue(), v)
 			if err != nil {
 				return fmt.Errorf("in map field %s, at key %s: %w", fdesc.Name(), k.String(), err)
 			}
@@ -463,9 +477,9 @@ func setField(msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, valu
 		return nil
 	}
 
-	v, err := toProto(fdesc, value)
+	v, err := toProto(thread, fdesc, value)
 	if err != nil {
-		return fmt.Errorf("in field %s: %v", fdesc.Name(), err)
+		return fmt.Errorf("in field %s: %w", fdesc.Name(), err)
 	}
 
 	if fdesc.IsExtension() {
@@ -485,7 +499,7 @@ func setField(msg protoreflect.Message, fdesc protoreflect.FieldDescriptor, valu
 }
 
 // toProto converts a Starlark value for a message field into protoreflect form.
-func toProto(fdesc protoreflect.FieldDescriptor, v starlark.Value) (protoreflect.Value, error) {
+func toProto(thread *starlark.Thread, fdesc protoreflect.FieldDescriptor, v starlark.Value) (protoreflect.Value, error) {
 	switch fdesc.Kind() {
 	case protoreflect.BoolKind:
 		// To avoid mistakes, we require v be exactly a bool.
@@ -582,7 +596,7 @@ func toProto(fdesc protoreflect.FieldDescriptor, v starlark.Value) (protoreflect
 
 		case *starlark.Dict:
 			dest := newMessage(desc)
-			err := setFields(dest, v.Items())
+			err := setFields(thread, dest, v.Items())
 			return protoreflect.ValueOfMessage(dest), err
 		}
 
@@ -869,7 +883,7 @@ func fieldDesc(desc protoreflect.MessageDescriptor, name string) (protoreflect.F
 
 // SetField updates a non-extension field of this message.
 // It implements the HasSetField interface.
-func (m *Message) SetField(name string, v starlark.Value) error {
+func (m *Message) SetField(thread *starlark.Thread, name string, v starlark.Value) error {
 	fdesc, err := fieldDesc(m.desc(), name)
 	if err != nil {
 		return err
@@ -878,7 +892,7 @@ func (m *Message) SetField(name string, v starlark.Value) error {
 		return fmt.Errorf("cannot set .%s field of frozen %s message",
 			name, m.desc().FullName())
 	}
-	return setField(m.msg, fdesc, v)
+	return setField(thread, m.msg, fdesc, v)
 }
 
 // AttrNames returns the set of field names defined for this message.
@@ -957,7 +971,7 @@ func (rf *RepeatedField) Attr(name string) (starlark.Value, error) {
 	}
 }
 
-func repeatedFieldAppend(_ *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func repeatedFieldAppend(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var object starlark.Value
 	if err := starlark.UnpackPositionalArgs(b.Name(), args, kwargs, 1, &object); err != nil {
 		return nil, err
@@ -968,9 +982,9 @@ func repeatedFieldAppend(_ *starlark.Thread, b *starlark.Builtin, args starlark.
 		return nil, err
 	}
 
-	po, err := toProto(rf.typ, object)
+	po, err := toProto(thread, rf.typ, object)
 	if err != nil {
-		return nil, fmt.Errorf("appending to repeated field: %v", err)
+		return nil, fmt.Errorf("appending to repeated field: %w", err)
 	}
 	rf.list.Append(po)
 
@@ -981,16 +995,16 @@ func (rf *RepeatedField) Type() string {
 	return fmt.Sprintf("proto.repeated<%s>", typeString(rf.typ))
 }
 
-func (rf *RepeatedField) SetIndex(i int, v starlark.Value) error {
+func (rf *RepeatedField) SetIndex(thread *starlark.Thread, i int, v starlark.Value) error {
 	if err := rf.checkMutable("insert into"); err != nil {
 		return err
 	}
-	x, err := toProto(rf.typ, v)
+	x, err := toProto(thread, rf.typ, v)
 	if err != nil {
 		// The repeated field value cannot know which field it
 		// belongs to---it might be shared by several of the
 		// same type---so the error message is suboptimal.
-		return fmt.Errorf("setting element of repeated field: %v", err)
+		return fmt.Errorf("setting element of repeated field: %w", err)
 	}
 	rf.list.Set(i, x)
 	return nil
@@ -1040,19 +1054,23 @@ type repeatedFieldIterator struct {
 	i  int
 }
 
-func (it *repeatedFieldIterator) Next(p *starlark.Value) bool {
-	if it.i < it.rf.Len() {
+func (it *repeatedFieldIterator) Next(_ *starlark.Thread, p *starlark.Value) (bool, error) {
+	if it.rf != nil && it.i < it.rf.Len() {
 		*p = it.rf.Index(it.i)
 		it.i++
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-func (it *repeatedFieldIterator) Done() {
+func (it *repeatedFieldIterator) Close() {
+	if it.rf == nil {
+		return
+	}
 	if !*it.rf.frozen {
 		it.rf.itercount--
 	}
+	it.rf = nil
 }
 
 // MapField represents a protocol message field of type 'map'.
@@ -1090,7 +1108,7 @@ func (mf *MapField) checkKeyType() error {
 	}
 }
 
-func (mf *MapField) SetKey(k, v starlark.Value) error {
+func (mf *MapField) SetKey(thread *starlark.Thread, k, v starlark.Value) error {
 	if err := mf.checkKeyType(); err != nil {
 		return err
 	}
@@ -1098,13 +1116,13 @@ func (mf *MapField) SetKey(k, v starlark.Value) error {
 		return err
 	}
 
-	kx, err := toProto(mf.typ.MapKey(), k)
+	kx, err := toProto(thread, mf.typ.MapKey(), k)
 	if err != nil {
-		return fmt.Errorf("converting map key: %v", err)
+		return fmt.Errorf("converting map key: %w", err)
 	}
-	vx, err := toProto(mf.typ.MapValue(), v)
+	vx, err := toProto(thread, mf.typ.MapValue(), v)
 	if err != nil {
-		return fmt.Errorf("converting map value: %v", err)
+		return fmt.Errorf("converting map value: %w", err)
 	}
 
 	mf.mp.Set(kx.MapKey(), vx)
@@ -1127,9 +1145,9 @@ func (mf *MapField) Get(k starlark.Value) (starlark.Value, bool, error) {
 	if err := mf.checkKeyType(); err != nil {
 		return nil, false, err
 	}
-	pk, err := toProto(mf.typ.MapKey(), k)
+	pk, err := toProto(nil, mf.typ.MapKey(), k)
 	if err != nil {
-		return nil, false, fmt.Errorf("converting map key: %v", err)
+		return nil, false, fmt.Errorf("converting map key: %w", err)
 	}
 
 	v := mf.mp.Get(pk.MapKey())
@@ -1219,19 +1237,23 @@ type mapFieldIterator struct {
 	i    int
 }
 
-func (it *mapFieldIterator) Next(p *starlark.Value) bool {
+func (it *mapFieldIterator) Next(_ *starlark.Thread, p *starlark.Value) (bool, error) {
 	if it.i < len(it.keys) {
 		*p = it.keys[it.i]
 		it.i++
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-func (it *mapFieldIterator) Done() {
+func (it *mapFieldIterator) Close() {
+	if it.mf == nil {
+		return
+	}
 	if !*it.mf.frozen {
 		it.mf.itercount--
 	}
+	it.mf, it.keys = nil, nil
 }
 
 func writeString(buf *bytes.Buffer, fdesc protoreflect.FieldDescriptor, v protoreflect.Value) {

@@ -138,6 +138,7 @@ func TestExecFile(t *testing.T) {
 		"testdata/assign.star",
 		"testdata/bool.star",
 		"testdata/builtins.star",
+		"testdata/generators.star",
 		"testdata/range_membership.star",
 		"testdata/range_methods.star",
 		"testdata/range_overflow.star",
@@ -221,12 +222,12 @@ func (t fib) Iterate() starlark.Iterator { return &fibIterator{0, 1} }
 
 type fibIterator struct{ x, y int }
 
-func (it *fibIterator) Next(p *starlark.Value) bool {
+func (it *fibIterator) Next(_ *starlark.Thread, p *starlark.Value) (bool, error) {
 	*p = starlark.MakeInt(it.x)
 	it.x, it.y = it.y, it.x+it.y
-	return true
+	return true, nil
 }
-func (it *fibIterator) Done() {}
+func (it *fibIterator) Close() {}
 
 // load implements the 'load' operation as used in the evaluator tests.
 func load(thread *starlark.Thread, module string) (starlark.StringDict, error) {
@@ -288,7 +289,7 @@ func (hf *hasfields) Freeze() {
 
 func (hf *hasfields) Attr(name string) (starlark.Value, error) { return hf.attrs[name], nil }
 
-func (hf *hasfields) SetField(name string, val starlark.Value) error {
+func (hf *hasfields) SetField(thread *starlark.Thread, name string, val starlark.Value) error {
 	if hf.frozen {
 		return fmt.Errorf("cannot set field on a frozen hasfields")
 	}
@@ -1231,11 +1232,11 @@ func TestDebugFrame(t *testing.T) {
 				if val == nil {
 					continue
 				}
-				dict.SetKey(starlark.String(bind.Name), val) // ignore error
+				dict.SetKey(nil, starlark.String(bind.Name), val) // ignore error
 			}
 			for i := 0; i < fn.NumFreeVars(); i++ {
 				bind, val := fn.FreeVar(i)
-				dict.SetKey(starlark.String(bind.Name), val) // ignore error
+				dict.SetKey(nil, starlark.String(bind.Name), val) // ignore error
 			}
 			dict.Freeze()
 			return dict, nil

@@ -14,7 +14,7 @@ import (
 )
 
 // format_ implements Python's format(value, format_spec="") builtin.
-func format_(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func format_(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value Value
 	var spec string
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &value, &spec); err != nil {
@@ -28,12 +28,12 @@ func format_(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 }
 
 // string_format implements str.format.
-func string_format(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_format(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	return formatString(string(b.Receiver().(String)), args, kwargs)
 }
 
 // string_format_map implements str.format_map.
-func string_format_map(_ *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
+func string_format_map(thread *Thread, b *Builtin, args Tuple, kwargs []Tuple) (Value, error) {
 	var value Value
 	if err := UnpackPositionalArgs(b.Name(), args, kwargs, 1, &value); err != nil {
 		return nil, err

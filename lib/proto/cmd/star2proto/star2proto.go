@@ -90,6 +90,7 @@ func main() {
 		"json":  json.Module,
 	}
 	globals, err := starlark.ExecFile(thread, filename, nil, predeclared)
+	thread.Close()
 	if err != nil {
 		if evalErr, ok := err.(*starlark.EvalError); ok {
 			fatalf("%s", evalErr.Backtrace())

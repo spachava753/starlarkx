@@ -23,28 +23,6 @@ func (fn *Function) CallInternal(thread *Thread, args Tuple, kwargs []Tuple) (Va
 	// but allows CALL to avoid a copy.
 
 	f := fn.funcode
-	if f.Prog.Recursion {
-		// prevent stack overflow
-		//
-		// Each CallInternal recursion (via Call) uses ~1.4KB,
-		// but the stack limit is on the order of 1GB, so a
-		// maximum of about 700K recursive calls is possible.
-		// Limit it to much less here.
-		if len(thread.stack) > 100_000 {
-			return nil, fmt.Errorf("Starlark stack overflow")
-		}
-	} else {
-		// detect recursion
-		for _, fr := range thread.stack[:len(thread.stack)-1] {
-			// We look for the same function code,
-			// not function value, otherwise the user could
-			// defeat the check by writing the Y combinator.
-			if frfn, ok := fr.Callable().(*Function); ok && frfn.funcode == f {
-				return nil, fmt.Errorf("function %s called recursively", fn.Name())
-			}
-		}
-	}
-
 	fr := thread.frameAt(0)
 
 	// Allocate space for stack and locals.
@@ -83,25 +61,82 @@ func (fn *Function) CallInternal(thread *Thread, args Tuple, kwargs []Tuple) (Va
 		locals[index] = &cell{locals[index]}
 	}
 
-	// TODO(adonovan): add static check that beneath this point
-	// - there is exactly one return statement
-	// - there is no redefinition of 'err'.
-
-	var iterstack []Iterator // stack of active iterators
-
-	// Use defer so that application panics can pass through
-	// interpreter without leaving thread in a bad state.
-	defer func() {
-		// ITERPOP the rest of the iterator stack.
-		for _, iter := range iterstack {
-			iter.Done()
+	if f.Generator {
+		state := &vmState{fn: fn, locals: locals, stack: stack}
+		for _, value := range locals {
+			if source, ok := value.(*iteratorSource); ok {
+				state.sources = append(state.sources, source)
+			}
 		}
+		cursor := &generatorCursor{state: state, fn: fn}
+		fr.locals = nil
+		return newIteratorValue(thread, cursor, []Value{cursor}, "generator")
+	}
+	state := vmState{fn: fn, locals: locals, stack: stack}
+	return state.run(thread)
+}
 
+// vmState is retained only by a suspended generator. Ordinary calls run it once.
+type vmState struct {
+	fn                  *Function
+	locals, stack       []Value
+	iterstack           []Iterator
+	iterRoots           []Value // sources retained by active loop cursors
+	sources             []*iteratorSource
+	sp                  int
+	pc                  uint32
+	suspended, complete bool
+	running, frozen     bool
+}
+
+func (state *vmState) close() {
+	for _, v := range slices.Backward(state.iterstack) {
+		v.Close()
+	}
+	for _, source := range state.sources {
+		source.Close()
+	}
+	state.locals, state.stack, state.iterstack, state.sources = nil, nil, nil, nil
+	state.iterRoots = nil
+	state.complete = true
+}
+
+func (state *vmState) run(thread *Thread) (Value, error) {
+	fn := state.fn
+	f := fn.funcode
+	if len(thread.stack) > 100_000 {
+		return nil, fmt.Errorf("Starlark stack overflow")
+	}
+	if !f.Prog.Recursion {
+		for _, frame := range thread.stack[:len(thread.stack)-1] {
+			var active *Function
+			switch c := frame.Callable().(type) {
+			case *Function:
+				active = c
+			case *generatorCursor:
+				active = c.fn
+			}
+			if active != nil && active.funcode == f {
+				return nil, fmt.Errorf("function %s called recursively", fn.Name())
+			}
+		}
+	}
+	fr := thread.frameAt(0)
+	locals, stack := state.locals, state.stack
+	fr.locals = locals
+	iterstack := state.iterstack
+	sp, pc := state.sp, state.pc
+	state.suspended = false
+	state.running = true
+	defer func() {
+		state.running = false
+		state.iterstack = iterstack
+		if !state.suspended {
+			state.close()
+		}
 		fr.locals = nil
 	}()
-
-	sp := 0
-	var pc uint32
+	var err error
 	var result Value
 	code := f.Code
 loop:
@@ -116,6 +151,11 @@ loop:
 		}
 		if reason := thread.cancelReason.Load(); reason != nil {
 			err = fmt.Errorf("Starlark computation cancelled: %s", *reason)
+			break loop
+		}
+
+		if state.frozen {
+			err = fmt.Errorf("cannot advance frozen generator")
 			break loop
 		}
 
@@ -192,7 +232,7 @@ loop:
 			y := stack[sp-1]
 			x := stack[sp-2]
 			sp -= 2
-			z, err2 := Binary(binop, x, y)
+			z, err2 := Binary(thread, binop, x, y)
 			if err2 != nil {
 				err = err2
 				break loop
@@ -229,12 +269,14 @@ loop:
 					if err = xlist.checkMutable("apply += to"); err != nil {
 						break loop
 					}
-					listExtend(xlist, yiter)
+					if err = listExtend(thread, xlist, yiter); err != nil {
+						break loop
+					}
 					z = xlist
 				}
 			}
 			if z == nil {
-				z, err = Binary(syntax.PLUS, x, y)
+				z, err = Binary(thread, syntax.PLUS, x, y)
 				if err != nil {
 					break loop
 				}
@@ -262,7 +304,7 @@ loop:
 				}
 			}
 			if z == nil {
-				z, err = Binary(syntax.PIPE, x, y)
+				z, err = Binary(thread, syntax.PIPE, x, y)
 				if err != nil {
 					break loop
 				}
@@ -291,7 +333,7 @@ loop:
 			pc = arg
 
 		case compile.ARGS_EXTEND:
-			err = extendCallArgs(stack[sp-2].(*List), stack[sp-1])
+			err = extendCallArgs(thread, stack[sp-2].(*List), stack[sp-1])
 			sp -= 2
 			if err != nil {
 				break loop
@@ -304,12 +346,12 @@ loop:
 			if err = checkCallKeyword(dict, key); err != nil {
 				break loop
 			}
-			if err = dict.SetKey(key, value); err != nil {
+			if err = dict.SetKey(thread, key, value); err != nil {
 				break loop
 			}
 
 		case compile.ARGS_MERGE:
-			err = mergeCallKeywords(stack[sp-2].(*Dict), stack[sp-1])
+			err = mergeCallKeywords(thread, stack[sp-2].(*Dict), stack[sp-1])
 			sp -= 2
 			if err != nil {
 				break loop
@@ -365,6 +407,30 @@ loop:
 			}
 			stack[sp-1] = z
 
+		case compile.YIELD:
+			sp--
+			result = stack[sp]
+			clear(stack[sp:])
+			state.sp, state.pc, state.suspended = sp, pc, true
+			return result, nil
+
+		case compile.MAKEGEN:
+			value := stack[sp-1]
+			cursor := Iterate(value)
+			if cursor == nil {
+				err = fmt.Errorf("%s value is not iterable", value.Type())
+				break loop
+			}
+			source := &iteratorSource{cursor: cursor, source: value}
+			result, err2 := Call(thread, stack[sp-2], Tuple{source}, nil)
+			if err2 != nil {
+				source.Close()
+				err = err2
+				break loop
+			}
+			sp--
+			stack[sp-1] = result
+
 		case compile.ITERPUSH:
 			x := stack[sp-1]
 			sp--
@@ -374,10 +440,16 @@ loop:
 				break loop
 			}
 			iterstack = append(iterstack, iter)
+			if f.Generator {
+				state.iterRoots = append(state.iterRoots, x)
+			}
 
 		case compile.ITERJMP:
 			iter := iterstack[len(iterstack)-1]
-			if iter.Next(&stack[sp]) {
+			if ok, err2 := iter.Next(thread, &stack[sp]); err2 != nil {
+				err = err2
+				break loop
+			} else if ok {
 				sp++
 			} else {
 				pc = arg
@@ -385,8 +457,12 @@ loop:
 
 		case compile.ITERPOP:
 			n := len(iterstack) - 1
-			iterstack[n].Done()
+			iterstack[n].Close()
 			iterstack = iterstack[:n]
+			if f.Generator {
+				state.iterRoots[n] = nil
+				state.iterRoots = state.iterRoots[:n]
+			}
 
 		case compile.DELINDEX:
 			err = deleteIndex(stack[sp-2], stack[sp-1])
@@ -403,14 +479,14 @@ loop:
 			}
 
 		case compile.SETEXTEND:
-			err = extendSetDisplay(stack[sp-2].(*Set), stack[sp-1])
+			err = extendSetDisplay(thread, stack[sp-2].(*Set), stack[sp-1])
 			sp -= 2
 			if err != nil {
 				break loop
 			}
 
 		case compile.DICTMERGE:
-			err = mergeDictDisplay(stack[sp-2].(*Dict), stack[sp-1])
+			err = mergeDictDisplay(thread, stack[sp-2].(*Dict), stack[sp-1])
 			sp -= 2
 			if err != nil {
 				break loop
@@ -423,7 +499,9 @@ loop:
 				err = fmt.Errorf("got %s, want iterable in display", stack[sp-1].Type())
 				break loop
 			}
-			listExtend(list, iterable)
+			if err = listExtend(thread, list, iterable); err != nil {
+				break loop
+			}
 			sp -= 2
 
 		case compile.LISTTOTUPLE:
@@ -443,7 +521,7 @@ loop:
 			break loop
 
 		case compile.SETSLICE:
-			err = setSlice(stack[sp-4], stack[sp-3], stack[sp-2], stack[sp-1], stack[sp-5])
+			err = setSlice(thread, stack[sp-4], stack[sp-3], stack[sp-2], stack[sp-1], stack[sp-5])
 			sp -= 5
 			if err != nil {
 				break loop
@@ -454,7 +532,7 @@ loop:
 			y := stack[sp-2]
 			x := stack[sp-3]
 			sp -= 3
-			err = setIndex(x, y, z)
+			err = setIndex(thread, x, y, z)
 			if err != nil {
 				break loop
 			}
@@ -486,7 +564,7 @@ loop:
 			x := stack[sp-2]
 			sp -= 2
 			name := f.Prog.Names[arg]
-			if err2 := setField(x, name, y); err2 != nil {
+			if err2 := setField(thread, x, name, y); err2 != nil {
 				err = err2
 				break loop
 			}
@@ -515,7 +593,7 @@ loop:
 			if op == compile.SETDICTUNIQ {
 				err = setDictUnique(dict, k, v)
 			} else {
-				err = dict.SetKey(k, v)
+				err = dict.SetKey(thread, k, v)
 			}
 			if err != nil {
 				break loop
@@ -543,7 +621,7 @@ loop:
 
 		case compile.UNPACKEX:
 			before, _ := stack[sp-1].(Int).Int64()
-			values, err2 := unpackRest(stack[sp-2], int(arg), int(before))
+			values, err2 := unpackRest(thread, stack[sp-2], int(arg), int(before))
 			sp -= 2
 			if err2 != nil {
 				err = err2
@@ -565,17 +643,30 @@ loop:
 			}
 			i := 0
 			sp += n
-			for i < n && iter.Next(&stack[sp-1-i]) {
+			for i < n {
+				ok, err2 := iter.Next(thread, &stack[sp-1-i])
+				if err2 != nil {
+					iter.Close()
+					err = err2
+					break loop
+				}
+				if !ok {
+					break
+				}
 				i++
 			}
 			var dummy Value
-			if iter.Next(&dummy) {
-				iter.Done()
+			if ok, err2 := iter.Next(thread, &dummy); err2 != nil {
+				iter.Close()
+				err = err2
+				break loop
+			} else if ok {
+				iter.Close()
 				// NB: Len may return -1 here in obscure cases.
 				err = fmt.Errorf("too many values to unpack (got %d, want %d)", Len(iterable), n)
 				break loop
 			}
-			iter.Done()
+			iter.Close()
 			if i < n {
 				err = fmt.Errorf("too few values to unpack (got %d, want %d)", i, n)
 				break loop
@@ -634,10 +725,12 @@ loop:
 			dict, err2 := thread.Load(thread, module)
 			thread.beginProfSpan()
 			if err2 != nil {
-				err = wrappedError{
+				// Loading is an evaluation boundary: report the load site here
+				// and retain the loaded module's traceback in the cause.
+				err = thread.evalError(wrappedError{
 					msg:   fmt.Sprintf("cannot load %s: %v", module, err2),
 					cause: err2,
-				}
+				})
 				break loop
 			}
 

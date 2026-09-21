@@ -203,6 +203,7 @@ func (e *encoder) function(fn *Funcode) {
 	e.int(fn.NumKwonlyParams)
 	e.int(b2i(fn.HasVarargs))
 	e.int(b2i(fn.HasKwargs))
+	e.int(b2i(fn.Generator))
 }
 
 func b2i(b bool) int {
@@ -375,7 +376,9 @@ func (d *decoder) function() *Funcode {
 	numKwonlyParams := d.int()
 	hasVarargs := d.int() != 0
 	hasKwargs := d.int() != 0
+	generator := d.int() != 0
 	return &Funcode{
+		Generator: generator,
 		// Prog is filled in later.
 		Pos:              id.Pos,
 		Name:             id.Name,

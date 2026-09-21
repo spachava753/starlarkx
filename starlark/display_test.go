@@ -22,16 +22,16 @@ type displayIterator struct {
 	next   int
 }
 
-func (it *displayIterator) Next(p *starlark.Value) bool {
+func (it *displayIterator) Next(_ *starlark.Thread, p *starlark.Value) (bool, error) {
 	*it.events = append(*it.events, "next")
 	if it.next == 2 {
-		return false
+		return false, nil
 	}
 	*p = starlark.MakeInt(it.next)
 	it.next++
-	return true
+	return true, nil
 }
-func (it *displayIterator) Done() { *it.events = append(*it.events, "done") }
+func (it *displayIterator) Close() { *it.events = append(*it.events, "done") }
 
 func TestDisplayIteratorCleanup(t *testing.T) {
 	for _, source := range []string{`[*source, later()]`, `(*source, later())`, `[*source, *0]`, `{*source, later()}`, `{*source, *0}`} {

@@ -46,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 25
+const Version = 26
 
 type Opcode uint8
 
@@ -99,6 +99,8 @@ const (
 	FALSE     // - FALSE False
 	MANDATORY // - MANDATORY Mandatory	     [sentinel value for required kwonly args]
 
+	YIELD        // value YIELD - [suspends the frame]
+	MAKEGEN      // fn iterable MAKEGEN generator [acquires the outer cursor]
 	ITERPUSH     //       iterable ITERPUSH     -  [pushes the iterator stack]
 	ITERPOP      //              - ITERPOP      -    [pops the iterator stack]
 	NOT          //          value NOT          bool
@@ -194,6 +196,8 @@ var opcodeNames = [...]string{
 	INPLACE_PIPE: "inplace_pipe",
 	ITERJMP:      "iterjmp",
 	ITERPOP:      "iterpop",
+	YIELD:        "yield",
+	MAKEGEN:      "makegen",
 	ITERPUSH:     "iterpush",
 	JMP:          "jmp",
 	LE:           "le",
@@ -280,6 +284,8 @@ var stackEffect = [...]int8{
 	INPLACE_PIPE: -1,
 	ITERJMP:      variableStackEffect,
 	ITERPOP:      0,
+	YIELD:        -1,
+	MAKEGEN:      -1,
 	ITERPUSH:     -1,
 	JMP:          0,
 	LE:           -1,
@@ -364,6 +370,7 @@ type Bytes string
 // Funcodes are serialized by the encoder.function method,
 // which must be updated whenever this declaration is changed.
 type Funcode struct {
+	Generator             bool
 	Prog                  *Program
 	Pos                   syntax.Position // position of def or lambda token
 	Name                  string          // name of this function
@@ -1261,6 +1268,15 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 		fcomp.jump(done)
 		fcomp.block = done
 
+	case *syntax.YieldStmt:
+		if stmt.Result != nil {
+			fcomp.expr(stmt.Result)
+		} else {
+			fcomp.emit(NONE)
+		}
+		fcomp.setPos(stmt.Yield)
+		fcomp.emit(YIELD)
+
 	case *syntax.ReturnStmt:
 		if stmt.Result != nil {
 			fcomp.expr(stmt.Result)
@@ -1481,6 +1497,13 @@ func (fcomp *fcomp) expr(e syntax.Expr) {
 		fcomp.emit(SLICE)
 
 	case *syntax.Comprehension:
+		if e.Generator {
+			fcomp.function(e.Function.(*resolve.Function))
+			fcomp.expr(e.Clauses[0].(*syntax.ForClause).X)
+			fcomp.setPos(e.Lbrack)
+			fcomp.emit(MAKEGEN)
+			break
+		}
 		if _, dict := e.Body.(*syntax.DictEntry); e.Curly && dict {
 			fcomp.emit(MAKEDICT)
 		} else if e.Curly {
@@ -2080,6 +2103,7 @@ func (fcomp *fcomp) function(f *resolve.Function) {
 	if f.NumPosonlyParams > 0 {
 		numParams-- // / occupies no parameter slot
 	}
+	funcode.Generator = f.Generator
 	funcode.NumParams = numParams
 	funcode.NumPosonlyParams = f.NumPosonlyParams
 	funcode.NumKwonlyParams = f.NumKwonlyParams

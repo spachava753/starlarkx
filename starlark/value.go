@@ -201,7 +201,7 @@ var (
 // of an Iterable is not necessarily known in advance of iteration.
 type Iterable interface {
 	Value
-	Iterate() Iterator // must be followed by call to Iterator.Done
+	Iterate() Iterator // must be followed by call to Iterator.Close
 }
 
 // A Sequence is a sequence of values of known length.
@@ -249,7 +249,7 @@ type Container interface {
 // evaluator does this before the call.
 type HasSetIndex interface {
 	Indexable
-	SetIndex(index int, v Value) error
+	SetIndex(thread *Thread, index int, v Value) error
 }
 
 var (
@@ -266,29 +266,15 @@ var (
 )
 
 // An Iterator provides a sequence of values to the caller.
-//
-// The caller must call Done when the iterator is no longer needed.
-// Operations that modify a sequence will fail if it has active iterators.
-//
-// Example usage:
-//
-//	var seq Iterator = ...
-//	iter := seq.Iterate()
-//	defer iter.Done()
-//	var elem Value
-//	for iter.Next(&elem) {
-//		...
-//	}
-//
-// Or, using go1.23 iterators:
-//
-//	for elem := range Elements(seq) { ... }
+// Close releases owned resources and is idempotent. A consumer must close
+// cursors it creates; borrowing an existing language iterator does not close it.
+// Next runs under the consuming thread and distinguishes exhaustion from failure.
 type Iterator interface {
-	// If the iterator is exhausted, Next returns false.
-	// Otherwise it sets *p to the current element of the sequence,
-	// advances the iterator, and returns true.
-	Next(p *Value) bool
-	Done()
+	// Next sets *p and returns (true, nil) for an element, (false, nil)
+	// for exhaustion, or (false, err) for failure. On exhaustion or failure
+	// the contents of *p are unspecified. After Close, Next returns exhaustion.
+	Next(thread *Thread, p *Value) (bool, error)
+	Close()
 }
 
 // A Mapping is a mapping from keys to values, such as a dictionary.
@@ -319,7 +305,7 @@ var _ IterableMapping = (*Dict)(nil)
 // A HasSetKey supports map update using x[k]=v syntax, like a dictionary.
 type HasSetKey interface {
 	Mapping
-	SetKey(k, v Value) error
+	SetKey(thread *Thread, k, v Value) error
 }
 
 var _ HasSetKey = (*Dict)(nil)
@@ -382,7 +368,7 @@ var (
 // warn of possible misspelling.
 type HasSetField interface {
 	HasAttrs
-	SetField(name string, val Value) error
+	SetField(thread *Thread, name string, val Value) error
 }
 
 // A NoSuchAttrError may be returned by an implementation of
@@ -654,16 +640,16 @@ type stringElemsIterator struct {
 	i  int
 }
 
-func (it *stringElemsIterator) Next(p *Value) bool {
+func (it *stringElemsIterator) Next(thread *Thread, p *Value) (bool, error) {
 	if it.i == len(it.si.s) {
-		return false
+		return false, nil
 	}
 	*p = it.si.Index(it.i)
 	it.i++
-	return true
+	return true, nil
 }
 
-func (*stringElemsIterator) Done() {}
+func (it *stringElemsIterator) Close() { it.si.s = ""; it.i = 0 }
 
 // A stringCodepoints is an iterable whose iterator yields a sequence of
 // Unicode code points, either numerically or as successive substrings.
@@ -693,10 +679,10 @@ type stringCodepointsIterator struct {
 	i  int
 }
 
-func (it *stringCodepointsIterator) Next(p *Value) bool {
+func (it *stringCodepointsIterator) Next(thread *Thread, p *Value) (bool, error) {
 	s := it.si.s[it.i:]
 	if s == "" {
-		return false
+		return false, nil
 	}
 	r, sz := utf8.DecodeRuneInString(string(s))
 	if !it.si.ords {
@@ -709,10 +695,10 @@ func (it *stringCodepointsIterator) Next(p *Value) bool {
 		*p = MakeInt(int(r))
 	}
 	it.i += sz
-	return true
+	return true, nil
 }
 
-func (*stringCodepointsIterator) Done() {}
+func (it *stringCodepointsIterator) Close() { it.si.s = ""; it.i = 0 }
 
 // A Function is a function defined by a Starlark def statement or lambda expression.
 // The initialization behavior of a Starlark module is also represented by a Function.
@@ -900,7 +886,7 @@ func (d *Dict) Items() []Tuple                                  { return d.ht.it
 func (d *Dict) Keys() []Value                                   { return d.ht.keys() }
 func (d *Dict) Len() int                                        { return int(d.ht.len) }
 func (d *Dict) Iterate() Iterator                               { return d.ht.iterate() }
-func (d *Dict) SetKey(k, v Value) error                         { return d.ht.insert(k, v) }
+func (d *Dict) SetKey(thread *Thread, k, v Value) error         { return d.ht.insert(k, v) }
 func (d *Dict) String() string                                  { return toString(d) }
 func (d *Dict) Type() string                                    { return "dict" }
 func (d *Dict) Freeze()                                         { d.ht.freeze() }
@@ -1061,22 +1047,26 @@ type listIterator struct {
 	i int
 }
 
-func (it *listIterator) Next(p *Value) bool {
-	if it.i < it.l.Len() {
+func (it *listIterator) Next(thread *Thread, p *Value) (bool, error) {
+	if it.l != nil && it.i < it.l.Len() {
 		*p = it.l.elems[it.i]
 		it.i++
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-func (it *listIterator) Done() {
+func (it *listIterator) Close() {
+	if it.l == nil {
+		return
+	}
 	if !it.l.frozen {
 		it.l.itercount--
 	}
+	it.l = nil
 }
 
-func (l *List) SetIndex(i int, v Value) error {
+func (l *List) SetIndex(thread *Thread, i int, v Value) error {
 	if err := l.checkMutable("assign to element of"); err != nil {
 		return err
 	}
@@ -1168,16 +1158,16 @@ func (t Tuple) Hash() (uint32, error) {
 
 type tupleIterator struct{ elems Tuple }
 
-func (it *tupleIterator) Next(p *Value) bool {
+func (it *tupleIterator) Next(thread *Thread, p *Value) (bool, error) {
 	if len(it.elems) > 0 {
 		*p = it.elems[0]
 		it.elems = it.elems[1:]
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
-func (it *tupleIterator) Done() {}
+func (it *tupleIterator) Close() { it.elems = nil }
 
 // A Set represents a Starlark set value.
 // The zero value of Set is a valid empty set.
@@ -1224,29 +1214,29 @@ func (x *Set) CompareSameType(op syntax.Token, y_ Value, depth int) (bool, error
 			return false, nil
 		}
 		iter := y.Iterate()
-		defer iter.Done()
-		return x.IsSuperset(iter)
+		defer iter.Close()
+		return x.IsSuperset(nil, iter)
 	case syntax.LE: // subset
 		if x.Len() > y.Len() {
 			return false, nil
 		}
 		iter := y.Iterate()
-		defer iter.Done()
-		return x.IsSubset(iter)
+		defer iter.Close()
+		return x.IsSubset(nil, iter)
 	case syntax.GT: // proper superset
 		if x.Len() <= y.Len() {
 			return false, nil
 		}
 		iter := y.Iterate()
-		defer iter.Done()
-		return x.IsSuperset(iter)
+		defer iter.Close()
+		return x.IsSuperset(nil, iter)
 	case syntax.LT: // proper subset
 		if x.Len() >= y.Len() {
 			return false, nil
 		}
 		iter := y.Iterate()
-		defer iter.Done()
-		return x.IsSubset(iter)
+		defer iter.Close()
+		return x.IsSubset(nil, iter)
 	default:
 		return false, fmt.Errorf("%s %s %s not implemented", x.Type(), op, y.Type())
 	}
@@ -1272,10 +1262,17 @@ func (s *Set) clone() *Set {
 	return set
 }
 
-func (s *Set) Union(iter Iterator) (Value, error) {
+func (s *Set) Union(thread *Thread, iter Iterator) (Value, error) {
 	set := s.clone()
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		if err := set.Insert(x); err != nil {
 			return nil, err
 		}
@@ -1283,9 +1280,16 @@ func (s *Set) Union(iter Iterator) (Value, error) {
 	return set, nil
 }
 
-func (s *Set) InsertAll(iter Iterator) error {
+func (s *Set) InsertAll(thread *Thread, iter Iterator) error {
 	var x Value
-	for iter.Next(&x) {
+	for {
+		ok, err := iter.Next(thread, &x)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
 		if err := s.Insert(x); err != nil {
 			return err
 		}
@@ -1293,10 +1297,17 @@ func (s *Set) InsertAll(iter Iterator) error {
 	return nil
 }
 
-func (s *Set) Difference(other Iterator) (Value, error) {
+func (s *Set) Difference(thread *Thread, other Iterator) (Value, error) {
 	diff := s.clone()
 	var x Value
-	for other.Next(&x) {
+	for {
+		ok, err := other.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		if _, err := diff.Delete(x); err != nil {
 			return nil, err
 		}
@@ -1304,9 +1315,16 @@ func (s *Set) Difference(other Iterator) (Value, error) {
 	return diff, nil
 }
 
-func (s *Set) IsDisjoint(other Iterator) (bool, error) {
+func (s *Set) IsDisjoint(thread *Thread, other Iterator) (bool, error) {
 	var x Value
-	for other.Next(&x) {
+	for {
+		ok, err := other.Next(thread, &x)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			break
+		}
 		found, err := s.Has(x)
 		if err != nil {
 			return false, err
@@ -1318,9 +1336,16 @@ func (s *Set) IsDisjoint(other Iterator) (bool, error) {
 	return true, nil
 }
 
-func (s *Set) IsSuperset(other Iterator) (bool, error) {
+func (s *Set) IsSuperset(thread *Thread, other Iterator) (bool, error) {
 	var x Value
-	for other.Next(&x) {
+	for {
+		ok, err := other.Next(thread, &x)
+		if err != nil {
+			return false, err
+		}
+		if !ok {
+			break
+		}
 		found, err := s.Has(x)
 		if err != nil {
 			return false, err
@@ -1332,18 +1357,25 @@ func (s *Set) IsSuperset(other Iterator) (bool, error) {
 	return true, nil
 }
 
-func (s *Set) IsSubset(other Iterator) (bool, error) {
-	if count, err := s.ht.count(other); err != nil {
+func (s *Set) IsSubset(thread *Thread, other Iterator) (bool, error) {
+	if count, err := s.ht.count(thread, other); err != nil {
 		return false, err
 	} else {
 		return count == s.Len(), nil
 	}
 }
 
-func (s *Set) Intersection(other Iterator) (Value, error) {
+func (s *Set) Intersection(thread *Thread, other Iterator) (Value, error) {
 	intersect := new(Set)
 	var x Value
-	for other.Next(&x) {
+	for {
+		ok, err := other.Next(thread, &x)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		found, err := s.Has(x)
 		if err != nil {
 			return nil, err
@@ -1358,9 +1390,9 @@ func (s *Set) Intersection(other Iterator) (Value, error) {
 	return intersect, nil
 }
 
-func (s *Set) SymmetricDifference(other Iterator) (Value, error) {
+func (s *Set) SymmetricDifference(thread *Thread, other Iterator) (Value, error) {
 	otherset := new(Set)
-	if err := otherset.InsertAll(other); err != nil {
+	if err := otherset.InsertAll(thread, other); err != nil {
 		return nil, err
 	}
 
@@ -1646,7 +1678,7 @@ func Len(x Value) int {
 }
 
 // Iterate return a new iterator for the value if iterable, nil otherwise.
-// If the result is non-nil, the caller must call Done when finished with it.
+// If the result is non-nil, the caller must call Close when finished with it.
 //
 // Warning: Iterate(x) != nil does not imply Len(x) >= 0.
 // Some iterables may have unknown length.

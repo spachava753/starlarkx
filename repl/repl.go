@@ -34,7 +34,9 @@ func REPL(thread *starlark.Thread, globals starlark.StringDict) {
 	REPLOptions(syntax.LegacyFileOptions(), thread, globals)
 }
 
-// REPLOptions executes a read, eval, print loop.
+// REPLOptions executes a read, eval, print loop using the supplied thread and
+// globals across requests. The caller owns the thread and should close it after
+// its final use to release unfinished iterators.
 //
 // Before evaluating each expression, it sets the Starlark thread local
 // variable named "context" to a context.Context that is cancelled by a
@@ -189,6 +191,7 @@ func MakeLoadOptions(opts *syntax.FileOptions) func(thread *starlark.Thread, mod
 
 			// Load it.
 			thread := &starlark.Thread{Name: "exec " + module, Load: thread.Load}
+			defer thread.Close()
 			globals, err := starlark.ExecFileOptions(opts, thread, module, nil, nil)
 			e = &entry{globals, err}
 

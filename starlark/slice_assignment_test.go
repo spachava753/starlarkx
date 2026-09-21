@@ -43,9 +43,11 @@ type sliceAssignmentIterable struct {
 	done func()
 }
 
-func (s *sliceAssignmentIterable) Iterate() starlark.Iterator  { return s }
-func (s *sliceAssignmentIterable) Next(v *starlark.Value) bool { return s.next(v) }
-func (s *sliceAssignmentIterable) Done()                       { s.done() }
+func (s *sliceAssignmentIterable) Iterate() starlark.Iterator { return s }
+func (s *sliceAssignmentIterable) Next(_ *starlark.Thread, v *starlark.Value) (bool, error) {
+	return s.next(v), nil
+}
+func (s *sliceAssignmentIterable) Close() { s.done() }
 
 func TestSliceAssignmentHostIterator(t *testing.T) {
 	for _, freeze := range []bool{false, true} {
@@ -89,7 +91,7 @@ func TestSliceAssignmentHostIterator(t *testing.T) {
 				}
 			}
 			if done != 1 {
-				t.Fatalf("Done called %d times", done)
+				t.Fatalf("Close called %d times", done)
 			}
 		})
 	}

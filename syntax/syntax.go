@@ -98,6 +98,23 @@ func (*WhileStmt) stmt()  {}
 func (*IfStmt) stmt()     {}
 func (*LoadStmt) stmt()   {}
 func (*ReturnStmt) stmt() {}
+func (*YieldStmt) stmt()  {}
+
+// A YieldStmt suspends a generator, producing Result (or None).
+type YieldStmt struct {
+	commentsRef
+	Yield  Position
+	Result Expr
+}
+
+func (x *YieldStmt) Span() (start, end Position) {
+	if x.Result != nil {
+		_, end = x.Result.Span()
+	} else {
+		end = x.Yield.add("yield")
+	}
+	return x.Yield, end
+}
 
 // An AssignStmt represents an assignment:
 //
@@ -340,14 +357,19 @@ func (x *DotExpr) Span() (start, end Position) {
 // Curly true and an ordinary expression body.
 type Comprehension struct {
 	commentsRef
-	Curly   bool // {x:y for ...} or {x for ...}, not [x for ...]
-	Lbrack  Position
-	Body    Expr
-	Clauses []Node // = *ForClause | *IfClause
-	Rbrack  Position
+	Generator bool // parentheses form a lazy generator expression
+	Function  any  // *resolve.Function for a generator expression
+	Curly     bool // {x:y for ...} or {x for ...}, not [x for ...]
+	Lbrack    Position
+	Body      Expr
+	Clauses   []Node // = *ForClause | *IfClause
+	Rbrack    Position
 }
 
 func (x *Comprehension) Span() (start, end Position) {
+	if x.Generator {
+		return x.Lbrack, x.Rbrack.add(")")
+	}
 	return x.Lbrack, x.Rbrack.add("]")
 }
 

@@ -16,7 +16,7 @@ type Binding struct {
 }
 
 // NumLocals returns the number of local variables of this frame.
-// It is zero unless fr.Callable() is a *Function.
+// It is zero unless the frame executes a Starlark function or generator.
 func (fr *frame) NumLocals() int { return len(fr.locals) }
 
 // Local returns the binding (name and binding position) and value of
@@ -28,7 +28,14 @@ func (fr *frame) NumLocals() int { return len(fr.locals) }
 //
 // This function is provided only for debugging tools.
 func (fr *frame) Local(i int) (Binding, Value) {
-	return Binding(fr.callable.(*Function).funcode.Locals[i]), fr.locals[i]
+	var fn *Function
+	switch callable := fr.callable.(type) {
+	case *Function:
+		fn = callable
+	case *generatorCursor:
+		fn = callable.fn
+	}
+	return Binding(fn.funcode.Locals[i]), fr.locals[i]
 }
 
 // DebugFrame is the debugger API for a frame of the interpreter's call stack.

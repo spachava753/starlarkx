@@ -571,7 +571,18 @@ func (r *resolver) stmt(stmt syntax.Stmt) {
 		r.stmts(stmt.Else)
 		r.ifstmts--
 
+	case *syntax.YieldStmt:
+		if r.container().function == nil {
+			r.errorf(stmt.Yield, "yield statement not within a function")
+		}
+		if stmt.Result != nil {
+			r.expr(stmt.Result)
+		}
+
 	case *syntax.ReturnStmt:
+		if fn := r.container().function; fn != nil && fn.Generator && stmt.Result != nil {
+			r.errorf(stmt.Return, "generator return may not have a value")
+		}
 		if r.container().function == nil {
 			r.errorf(stmt.Return, "return statement not within a function")
 		}
@@ -741,6 +752,28 @@ func (r *resolver) expr(e syntax.Expr) {
 		}
 
 	case *syntax.Comprehension:
+		if e.Generator {
+			outer := e.Clauses[0].(*syntax.ForClause)
+			r.expr(outer.X)
+			parameter := &syntax.Ident{Name: ".iterator", NamePos: outer.For}
+			body := []syntax.Stmt{&syntax.YieldStmt{Yield: e.Lbrack, Result: e.Body}}
+			for i := len(e.Clauses) - 1; i >= 0; i-- {
+				switch clause := e.Clauses[i].(type) {
+				case *syntax.ForClause:
+					x := clause.X
+					if i == 0 {
+						x = &syntax.Ident{Name: parameter.Name, NamePos: outer.For}
+					}
+					body = []syntax.Stmt{&syntax.ForStmt{For: clause.For, Vars: clause.Vars, X: x, Body: body}}
+				case *syntax.IfClause:
+					body = []syntax.Stmt{&syntax.IfStmt{If: clause.If, Cond: clause.Cond, True: body}}
+				}
+			}
+			fn := &Function{Name: "<genexpr>", Pos: e.Lbrack, Params: []syntax.Expr{parameter}, Body: body}
+			e.Function = fn
+			r.function(fn, e.Lbrack)
+			break
+		}
 		if _, dict := e.Body.(*syntax.DictEntry); e.Curly && !dict && !r.options.Set {
 			r.errorf(e.Lbrack, "set comprehensions require the Set option")
 		}
@@ -872,6 +905,17 @@ func (r *resolver) expr(e syntax.Expr) {
 }
 
 func (r *resolver) function(function *Function, pos syntax.Position) {
+	for _, stmt := range function.Body {
+		syntax.Walk(stmt, func(n syntax.Node) bool {
+			switch n.(type) {
+			case *syntax.DefStmt, *syntax.LambdaExpr:
+				return false
+			case *syntax.YieldStmt:
+				function.Generator = true
+			}
+			return true
+		})
+	}
 	// Resolve defaults in enclosing environment.
 	for _, param := range function.Params {
 		if binary, ok := param.(*syntax.BinaryExpr); ok {

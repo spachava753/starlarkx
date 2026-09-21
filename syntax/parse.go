@@ -345,6 +345,14 @@ func (p *parser) parseSmallStmt() Stmt {
 		pos := p.nextToken()
 		return &DelStmt{Del: pos, X: p.parseExpr(false)}
 
+	case YIELD:
+		pos := p.nextToken()
+		var result Expr
+		if p.tok != EOF && p.tok != NEWLINE && p.tok != SEMI {
+			result = p.parseExpr(false)
+		}
+		return &YieldStmt{Yield: pos, Result: result}
+
 	case RETURN:
 		pos := p.nextToken() // consume RETURN
 		var result Expr
@@ -859,6 +867,13 @@ func (p *parser) parseArgs() []Expr {
 		// Instead of looking ahead two tokens (IDENT, EQ) we parse
 		// 'test = test' then check that the first was an IDENT.
 		x := p.parseTest()
+		if p.tok == FOR {
+			if len(args) != 0 {
+				p.in.errorf(p.in.pos, "generator expression must be parenthesized")
+			}
+			pos, _ := x.Span()
+			return []Expr{p.parseComprehensionSuffix(pos, x, RPAREN)}
+		}
 
 		if p.tok == EQ {
 			// name = value
@@ -936,6 +951,12 @@ func (p *parser) parsePrimary() Expr {
 			return &TupleExpr{Lparen: lparen, Rparen: rparen}
 		}
 		e := p.parseExpr(true) // allow trailing comma
+		if p.tok == FOR {
+			if _, tuple := e.(*TupleExpr); tuple {
+				p.in.errorf(lparen, "generator expression body must be one expression")
+			}
+			e = p.parseComprehensionSuffix(lparen, e, RPAREN)
+		}
 		rparen := p.consume(RPAREN)
 		if tuple, ok := e.(*TupleExpr); ok {
 			tuple.Lparen, tuple.Rparen = lparen, rparen
@@ -1067,6 +1088,8 @@ func (p *parser) parseDictEntry() Expr {
 //
 // There can be multiple FOR/IF clauses; the first is always a FOR.
 func (p *parser) parseComprehensionSuffix(lbrace Position, body Expr, endBrace Token) Expr {
+	p.enter()
+	defer p.leave()
 	var clauses []Node
 	for p.tok != endBrace {
 		if p.tok == FOR {
@@ -1089,14 +1112,18 @@ func (p *parser) parseComprehensionSuffix(lbrace Position, body Expr, endBrace T
 			p.in.errorf(p.in.pos, "got %#v, want '%s', for, or if", p.tok, endBrace)
 		}
 	}
-	rbrace := p.nextToken()
+	rbrace := p.tokval.pos
+	if endBrace != RPAREN {
+		p.nextToken()
+	}
 
 	return &Comprehension{
-		Curly:   endBrace == RBRACE,
-		Lbrack:  lbrace,
-		Body:    body,
-		Clauses: clauses,
-		Rbrack:  rbrace,
+		Generator: endBrace == RPAREN,
+		Curly:     endBrace == RBRACE,
+		Lbrack:    lbrace,
+		Body:      body,
+		Clauses:   clauses,
+		Rbrack:    rbrace,
 	}
 }
 

@@ -10,6 +10,8 @@ choices of the Go implementation of Starlark.
   * [Evaluator](#evaluator)
     * [Data types](#data-types)
     * [Freezing](#freezing)
+    * [Fail-fast iterators](#fail-fast-iterators)
+    * [Evaluation strategy](#evaluation-strategy)
   * [Testing](#testing)
 
 
@@ -327,6 +329,19 @@ and when a function value is frozen, it freezes each of the free
 variables and parameter default values implicitly referenced by its closure.
 Application-defined types must also follow this discipline.
 
+A suspended generator retains more than its local variables: intermediate
+values on its operand stack and the sources of active loops may also refer to
+mutable objects. Freezing saves these references before discarding the
+execution state, then freezes the referenced values. As with other values, the generator is marked frozen
+before traversal so that cycles do not cause repeated visits. Closing its
+iterators releases their collection locks without running the rest of its body.
+
+A host callback may freeze a generator while it is running. Clearing the
+execution state at that point would invalidate the interpreter's active stack.
+Instead, freezing marks the state and leaves it intact until the evaluator
+checks the flag before its next instruction. Evaluation then fails, and the
+normal exit path releases the state and its iterators.
+
 The freeze mechanism in the Go implementation is finer grained than in
 the Java implementation: in effect, the latter has one "frozen" flag
 per module, and every value holds a reference to the frozen flag of
@@ -357,16 +372,31 @@ dict element while looping over the dict, will fail. The error is
 reported against the delete operation, not the iteration.
 
 This is implemented by having each mutable iterable value record a
-counter of active iterators. Starting a loop increments this counter,
-and completing a loop decrements it. A collection with a nonzero
+counter of active iterators. Starting iteration increments this counter,
+and ending it decrements the counter. Suspending a generator does not
+change the counter: its loops are still in progress. A collection with a nonzero
 counter behaves as if frozen. If the collection is actually frozen,
 the counter bookkeeping is unnecessary. (Consequently, iterator
 bookkeeping is needed only while objects are still mutable, before
 they can have been published to another thread, and thus no
 synchronization is necessary.)
 
-A consequence of this design is that in the Go API, it is imperative
-to call `Done` on each iterator once it is no longer needed.
+A loop over a collection creates an iterator and closes it on every exit,
+including a break or an error. A loop over an existing iterator needs different
+cleanup: the program may want to resume that iterator after the loop. Such a
+loop uses a small wrapper that forwards requests for elements but does not
+close the underlying iterator when the loop exits. This separates the lifetime
+of a consumer from the lifetime of the iteration it shares.
+
+Language-visible iterators may outlive any one evaluation. The thread already
+persists across REPL requests, so it keeps a registry of unfinished iterators,
+removing each one when it finishes or is closed. Each entry records creation
+order. Closing the thread closes the remaining entries in reverse order.
+This makes lock release independent of garbage collection, at the cost of
+retaining abandoned iterators until thread cleanup. An iterator records its
+owning thread and rejects use from another thread. The registry therefore
+needs no synchronization beyond the thread's existing requirement for
+sequential use.
 
 ```
 TODO
@@ -374,7 +404,7 @@ starlark.Value interface and subinterfaces
 argument passing to builtins: UnpackArgs, UnpackPositionalArgs.
 ```
 
-<b>Evaluation strategy:</b>
+### Evaluation strategy
 
 StarlarkX compiles source to bytecode before running it. Parsing produces a
 syntax tree, name resolution identifies the variables each name refers to,
@@ -386,6 +416,33 @@ holds intermediate values. Arguments fill the parameter slots, then the
 interpreter runs the function's instructions. It counts execution steps and
 checks for cancellation as it runs. Active iterators are tracked separately
 and cleaned up when the function exits, including on errors.
+
+A generator uses the same interpreter, but keeps its execution state between
+advances. Calling a generator function binds arguments and allocates its local
+variables and operand stack without running the body. When iteration requests
+a value, execution starts at the saved program counter. A yield saves the next
+instruction position and the stack pointer, then returns the yielded value
+without closing active loops. Unused operand slots are cleared to avoid
+retaining temporary values. Suspension thus requires only a saved data record,
+not a goroutine or a waiting Go call stack.
+
+Each advance installs a call frame on the generator's owning thread. Step
+counting, cancellation, host callbacks, and error reporting use the thread's
+current state, rather than a copy saved when the generator was created. A
+running flag prevents a callback from advancing or closing the same generator
+while its frame is active. Thread cleanup is also rejected during execution. Return and failure use ordinary function cleanup;
+yield alone leaves the state available for resumption. A failed generator
+retains its error separately from its discarded execution state, so later
+requests cannot mistake failure for exhaustion.
+
+The resolver recognizes generator functions by scanning their bodies for yield
+statements, excluding nested function definitions. Generator expressions are
+translated into hidden functions with nested loops and conditions around a
+yield. The outer iterable is evaluated outside that function, and its iterator
+is passed in as an argument. This preserves immediate validation of the outer
+iterable while deferring the body and inner loops. Acquiring that iterator and
+creating the generator are one interpreter operation, so cancellation cannot
+leave an acquired iterator without an owner.
 
 ```
 TODO

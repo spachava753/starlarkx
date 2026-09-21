@@ -121,7 +121,7 @@ features that need separate decisions.
 | Values / Object identity | `OPEN` | - | - | - | - |
 | Calls / Argument evaluation with unpacking | `STARLARK` | `DEFAULT` | `YES` | Evaluate the function expression first, then argument expressions from left to right as written, including expressions after `*` and `**`. Preserve this expression order for every allowed call layout. Keep function parameter-binding rules unchanged; expansion timing is defined in the unpacking evaluation and validation row. | Reading a call from left to right should tell you which argument expression runs first. Do not move starred positional expressions ahead of earlier named arguments. |
 | Calls / Multiple unpackings in calls | `STARLARKX` | `DEFAULT` | `YES` | Allow any number of `*` and `**` unpackings. Allow ordinary positional arguments among `*` entries before any named argument or `**`, and named arguments among `**` entries. Allow `*` after named arguments but before the first `**`. Reject ordinary positional arguments after named arguments or `**`, and reject `*` after `**`. Keep repeated explicit keyword names as static errors. Use StarlarkX expression order, expansion, and binding rules. | Combine argument sources without intermediate collections while keeping positional and keyword placement readable. |
-| Calls / Unpacking evaluation and validation | `STARLARKX` | `DEFAULT` | `YES` | Finish each call argument entry before evaluating the next. Expand `*` from StarlarkX iterables and `**` from iterable mappings using key iteration and lookup. For each mapping key, require a string and reject an already supplied keyword name before looking up its value. Preserve keyword insertion order and allow non-identifier string keys. Reject duplicate keyword names before invoking any language function, built-in, or host callable. Stop on construction errors, skip later expressions, and keep earlier side effects. Release each input iterator before the next entry or callee runs, including on errors. Build new argument containers with shared element values. Bind parameters after successful construction, preserving positional-only behavior. | Make expansion and errors independent of compiler batching or the number of unpackings. Prevent invalid keyword calls from entering a callee or silently choosing one duplicate value. |
+| Calls / Unpacking evaluation and validation | `STARLARKX` | `DEFAULT` | `YES` | Finish each call argument entry before evaluating the next. Expand `*` from StarlarkX iterables and `**` from iterable mappings using key iteration and lookup. For each mapping key, require a string and reject an already supplied keyword name before looking up its value. Preserve keyword insertion order and allow non-identifier string keys. Reject duplicate keyword names before invoking any language function, built-in, or host callable. Stop on construction errors, skip later expressions, and keep earlier side effects. Close each acquired cursor before the next entry or callee runs, including on errors; borrowed language iterators remain resumable. Build new argument containers with shared element values. Bind parameters after successful construction, preserving positional-only behavior. | Make expansion and errors independent of compiler batching or the number of unpackings. Prevent invalid keyword calls from entering a callee or silently choosing one duplicate value. |
 | Calls / `map` strict option | `STARLARKX` | `DEFAULT` | `YES` | Accept keyword-only `strict=False`, requiring an actual Boolean. With `True`, require equal input lengths by consuming iterators in written order, without a length pre-scan. Stop on the first mismatch; an unmatched item may be consumed. Call the function only for complete groups. Keep earlier callback effects but return no partial list on error. Preserve eager results, mutation checks, and iterator cleanup. | Catch accidentally unequal inputs without adding lazy results or changing default shortest-input behavior. |
 | Calls / `zip` strict option | `STARLARKX` | `DEFAULT` | `YES` | Accept keyword-only `strict=False`, requiring an actual Boolean. With `True`, require equal input lengths by consuming iterators in written order, without a length pre-scan. Stop on the first mismatch; an unmatched item may be consumed. Preserve eager list results, mutation checks, and iterator cleanup. Zero inputs produce an empty list. | Catch accidentally unequal inputs while retaining existing default behavior and eager results. |
 | Calls / `int` signature | `STARLARK` | `DEFAULT` | `YES` | Keep `int(x[, base])`: require `x`, allow both `x` and optional `base` by position or name, and reject `int()`. Keep existing conversion and base-validation rules unchanged. | Preserve existing named calls and require an explicit value to convert rather than implicitly produce zero. |
@@ -150,7 +150,7 @@ features that need separate decisions.
 | Syntax / Dictionary display unpacking | `STARLARKX` | `DEFAULT` | `YES` | Allow `{**a, **b}` with explicit entries between unpackings. Accept StarlarkX iterable mappings and insert entries into a new dictionary from left to right. Reject duplicate keys across all entries and unpackings using StarlarkX equality and hashing. Do not modify the inputs. | Catch duplicate keys instead of silently overwriting values. Use `update` when overwriting is intended. |
 | Syntax / List and dictionary comprehensions | `STARLARKX` | `DEFAULT` | `YES` | Keep list and dictionary comprehensions that build their results immediately, with nested loops, filters, and local loop variables. Use StarlarkX iteration, equality, hashing, and mutation rules. In dictionary comprehensions, later values still replace earlier values for equal keys. | Keep the current way to build collections with loops and filters. |
 | Syntax / Set comprehensions | `STARLARKX` | `OPTION` | `YES` | Allow `{x for x in items if condition}` when `FileOptions.Set` is enabled, including nested loops and filters. Build the set immediately, without an intermediate list, and keep loop variables local to the comprehension. Keep StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Set displays and generators are separate decisions. | Add a shorter way to build sets without changing how their elements behave. |
-| Syntax / Generator expressions | `OPEN` | - | - | - | - |
+| Syntax / Generator expressions | `STARLARKX` | `DEFAULT` | `YES` | Support `(body for target in iterable if condition)` with nested clauses and a separate lexical scope. Evaluate and acquire the outer iterable at construction; defer body, filters, and inner iterables until advancement. Allow omission of parentheses only as the sole call argument. Use thread-owned, single-pass generators and existing StarlarkX iteration and binding rules. | Enable short-circuiting and streaming transformations without intermediate collections. |
 | Syntax / Async comprehensions | `OPEN` | - | - | - | - |
 | Syntax / Loop clauses | `PYTHON` | `DEFAULT` | `YES` | Allow `else` on `for` and `while`. Run it when the iterable runs out or the condition becomes false, including when the body never runs. Skip it when `break` exits that loop. | Make it easy to handle a search that finishes without finding a match. |
 | Syntax / Positional-only function parameters | `PYTHON` | `DEFAULT` | `YES` | Allow `/` in function and lambda parameter lists with Python's placement and argument-binding rules. Parameters before `/` cannot be supplied by keyword; a keyword with the same name may instead go into `**kwargs`. Leave default values, scope, and value behavior unchanged. | Let function authors require positional arguments where names should not be part of the calling interface. |
@@ -171,7 +171,7 @@ features that need separate decisions.
 | Statements / Name and attribute deletion | `STARLARK` | `DEFAULT` | `YES` | Keep `del name` and `del obj.attribute` unsupported. | Do not let deletion make an assigned name become unbound or add a separate host operation for deleting attributes. |
 | Statements / Python imports | `STARLARK` | `HOST` | `YES` | Keep Python `import` and `from` statements unsupported; use the existing host-controlled `load` mechanism. | Follow the already-selected module-loading policy rather than add a second import system. |
 | Statements / Outer-scope declarations | `STARLARK` | `DEFAULT` | `YES` | Keep `global` and `nonlocal` unsupported. Assignments bind within the current function; existing rules still allow explicit mutation of shared containers. | Keep the effect of assigning a name local and easy to follow. |
-| Statements / Generators | `OPEN` | - | - | - | - |
+| Statements / Generators | `STARLARKX` | `DEFAULT` | `YES` | A function containing a `yield` statement returns a generator. Bind arguments at the call, execute the body on advancement, retain locals and active iterators across suspension, and exhaust on bare `return` or fall-through. Bare `yield` produces `None`. Reject return values in generators, yield expressions, `yield from`, `send`, and `throw`. Errors terminate the generator and propagate to the consumer. | Let functions produce incremental results without adding exception-based control flow or coroutines. |
 | Statements / Async syntax | `OPEN` | - | - | - | - |
 | Statements / Structural pattern matching | `OPEN` | - | - | - | - |
 | Statements / Type aliases | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `type` alias statement unsupported; `type` remains an ordinary name. | Do not add type aliases without support for using them. |
@@ -182,7 +182,8 @@ features that need separate decisions.
 | Expressions / Unparenthesized iterable unpacking | `STARLARK` | `DEFAULT` | `YES` | Keep starred expressions outside bracketed displays and call arguments unsupported, as in `return *items,`. Starred assignment targets are a separate decision. | Require brackets or parentheses so the resulting collection is clear. |
 | Expressions / Complex numbers and `Ellipsis` | `OPEN` | - | - | - | - |
 | Expressions / Matrix multiplication | `OPEN` | - | - | - | - |
-| Expressions / Iterator protocol | `OPEN` | - | - | - | - |
+| Expressions / Iterator protocol | `STARLARKX` | `DEFAULT` | `YES` | Expose single-pass iterators and generators with idempotent `close()`, identity equality, no hashing or indexing, and truth independent of exhaustion. Consumers close fresh cursors they own, not borrowed language-visible cursors. Paused cursors retain collection mutation locks. Exhaustion, failure, explicit close, and host thread close release owned resources without executing suspended code. Failed generators retain their error. Dictionary construction and update also accept unknown-length iterator pairs, probing at most three elements to validate each pair. Freezing closes a cursor, freezes retained captured values, and prevents advancement. If a host callback freezes an executing generator, its current advance fails before the next VM instruction and releases resources while unwinding. | Preserve resumability and mutation checks while providing explicit cleanup suitable for persistent REPL sessions. |
+| Execution / Iterator lifetime | `STARLARKX` | `HOST` | `YES` | The creating thread owns unfinished language iterators across evaluations. Resume on that same thread using its current callbacks, cancellation, and step budget. Reject use from another thread and iterator reentry. Thread close is explicit, idempotent, and rejected during active execution; a closed thread cannot evaluate code. The thread retains abandoned unfinished cursors until close; no GC-timed cleanup is promised. | Reuse the persistent REPL thread as the execution-state owner, with deterministic cleanup and no separate session abstraction. |
 | Expressions / Python object protocol | `STARLARK` | `HOST` | `YES` | Do not add Python's class-based special methods such as `__getattr__`, `__iter__`, or `__enter__`. Keep the existing Go interfaces for host-defined values. | Host objects can support operations without introducing Python's object system. |
 | Expressions / Runtime introspection objects | `OPEN` | - | - | - | - |
 | Expressions / Immutable collection counterparts | `OPEN` | - | - | - | - |
@@ -212,11 +213,11 @@ features that need separate decisions.
 | Builtins / `input` | `STARLARK` | `DEFAULT` | `YES` | Keep terminal-input reading unsupported in the core. | Programs should receive input through the host rather than read from the terminal themselves. |
 | Builtins / `isinstance` | `OPEN` | - | - | - | - |
 | Builtins / `issubclass` | `STARLARK` | `DEFAULT` | `YES` | Keep `issubclass` unsupported. | Classes and inheritance are unsupported. |
-| Builtins / `iter` | `OPEN` | - | - | - | - |
+| Builtins / `iter` | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `iter(iterable)`, returning an existing language iterator unchanged or wrapping a fresh cursor owned by the current thread. Reject non-iterables, including strings and bytes without explicit iterable views. Do not provide callable/sentinel iteration. | Expose existing iteration capabilities without changing scalar string behavior or adding a second iteration form. |
 | Builtins / `locals` | `OPEN` | - | - | - | - |
 | Builtins / `map` | `STARLARKX` | `DEFAULT` | `YES` | Provide `map(function, iterable, /, *iterables, strict=False)` and return a new list immediately. Require a callable and at least one iterable. Pass one item from each input to the function for each result, preserving order and stopping at the shortest input by default. Use StarlarkX iteration and mutation rules; callback errors stop evaluation. The optional `strict` behavior is defined in the separate strict-option decision. | Add a convenient way to transform items, consistent with the lists returned by `enumerate`, `zip`, and `reversed`. |
 | Builtins / `memoryview` | `OPEN` | - | - | - | - |
-| Builtins / `next` | `OPEN` | - | - | - | - |
+| Builtins / `next` | `STARLARKX` | `DEFAULT` | `YES` | Provide positional-only `next(iterator[, default])`. Return the next value, or the supplied default on exhaustion. Without a default, exhaustion is a fatal evaluation error. Do not treat iteration failures as exhaustion or suppress them with the default. | Support incremental consumption without introducing `StopIteration` or language-level exception handling. |
 | Builtins / `object` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `object` constructor and base class unsupported. | Use existing values and host objects without adding a class hierarchy. |
 | Builtins / `open` | `STARLARK` | `DEFAULT` | `YES` | Keep file and file-descriptor access through `open` unsupported in the core. | Let the host choose whether and how programs can access files. |
 | Builtins / `property` | `STARLARK` | `DEFAULT` | `YES` | Keep Python's `property` built-in unsupported. Host objects may still provide attributes through existing Go interfaces. | Do not add class properties or descriptors. |
@@ -269,6 +270,9 @@ The shared core is substantial:
   keyword arguments, keyword-only parameters, `return`, `if`/`elif`/`else`,
   `for`, `while`, `break`, `continue`, and `pass`. Some are restricted or
   disabled by default.
+- Generator expressions and generator functions with statement-form `yield`;
+  explicit, thread-owned iterators support incremental consumption across REPL
+  evaluations. Coroutine controls and generator return values are not supported.
 - Mutable default arguments have the same reuse-across-calls behavior as
   Python, until module freezing makes them immutable.
 - Lists and tuples compare lexicographically; dictionaries and sets compare by
@@ -285,6 +289,7 @@ The shared core is substantial:
 | Host boundary | The embedding Go application chooses predeclared names, value types, modules, printing, loading, cancellation, and thread-local state. | The runtime and import system provide a much larger standardized environment. | Addition |
 | Module finalization | Successful module execution recursively freezes all reachable global lists, dictionaries, sets, tuples, function defaults, and closure state. Later mutation fails. | Module globals and objects reachable from them remain mutable. | Divergence |
 | Parallelism | Independent host-created Starlark threads can run in parallel; frozen loaded modules can be shared safely. There is no user-level concurrency syntax. | CPython threads normally share a runtime with implementation-dependent interpreter locking; Python also has user-level threading, multiprocessing, and async APIs. | Divergence / omission |
+| Iterator lifetime | The creating thread retains unfinished cursors across evaluations. Only that thread may resume or close them. Explicit thread close releases remaining resources without running generator code and prevents further evaluation. | No corresponding creating-thread ownership requirement; generator finalization and resource policies depend on the Python runtime and application. | Host lifecycle divergence |
 | Error propagation | A dynamic error aborts Starlark execution and returns a backtrace to the host. Starlark code cannot catch it. | Exceptions can be raised, caught, transformed, and finalized in the language. | Omission with different failure semantics |
 | Undefined names | Name resolution rejects every name with no known universal, predeclared, loaded, global, local, or free binding, even in dead code or an uncalled function. | An unresolved function-body name is treated as global and usually fails only if execution reaches it. | Divergence |
 | Whole-file global scope | A top-level assignment shadows a predeclared name throughout the file, including uses textually before the assignment; an early use fails as uninitialized. | Top-level code executes against the module dictionary, so an earlier use can still see a built-in or existing global. | Divergence |
@@ -327,6 +332,9 @@ after loading, and easier to check before running.
 | Eager sequence built-ins | `enumerate`, `zip`, and `reversed` return new lists. | They return lazy iterator objects. | Divergence |
 | Range `count` and `index` | Accept exactly one positional integer or finite float, using the same direct arithmetic lookup as membership. `count` returns zero or one; `index` returns the position or fails when absent. Invalid operands are errors even for empty ranges. | The same result for finite numeric operands, but Python permits other values through equality-based search and treats booleans as integers. Non-integer searches can iterate the range. | Aligned finite-number search / operand and Boolean divergence |
 | Integer `bit_length` and `bit_count` | Argument-free queries of the absolute value's binary width and set-bit count, returning zero for zero. Available on integers, not booleans. | Same integer results; booleans inherit both methods from `int`. | Aligned integer methods / Boolean divergence |
+| Iterator protocol | Iterators are single-pass and resume after partial consumption. All expose `close`; paused mutable collections stay locked. Exhaustion and failure are distinct. Freezing prevents further advancement; freezing an executing generator from a host callback aborts its advance before the next VM instruction. | Iterators resume after partial consumption, but `close` is not a universal iterator method. Generators have exception-based `close`; ordinary list iterators do not lock their source against mutation. | Aligned resumability / cleanup, mutation, and freezing divergence |
+| Generator functions | Statement-form `yield` suspends execution; bare `yield` produces `None`. Calls bind arguments before running the body. No generator return values, `send`, `throw`, or `yield from`. | Also supports yield expressions, generator return values, delegation, and coroutine controls. | Restriction |
+| `iter` and `next` | `iter(iterable)` and `next(iterator[, default])` are positional-only. A default applies only to exhaustion; without one, exhaustion is a fatal evaluation error. | Also supports `iter(callable, sentinel)`; exhaustion without a default raises catchable `StopIteration`. | Restriction / error-model divergence |
 | Range arithmetic limits | Constructor arguments and lengths must fit in signed machine integers; oversized lengths are errors. Slices retain exact derived parameters even beyond machine width, without materializing elements. | Constructor arguments and range lengths may exceed machine width; `len()` raises `OverflowError` if the length exceeds `sys.maxsize`. Slices retain exact parameters. | Construction and length restriction / aligned slice arithmetic |
 | Range hashability | Equal `range` values compare equal but are unhashable. | `range` values are hashable. | Divergence |
 | Range membership | Accepts integers and finite floats using exact numeric membership: `1.0 in range(3)` is true and `1.9 in range(3)` is false. Booleans, other nonnumeric values, NaN, and infinities remain errors, including for empty ranges. | Membership uses equality. These numeric examples agree, but unrelated types, NaN, and infinities produce false; booleans compare as integers. | Aligned finite-number membership / operand and Boolean divergence |
@@ -355,14 +363,14 @@ Python signatures are checked against the reference documentation for
 | --- | --- | --- | --- |
 | Argument evaluation with unpacking | Evaluates the callee first, then argument expressions in written order for every allowed layout. If `mark` records and returns its argument, `f(mark(1), x=mark(2), *[mark(3)])` records 1, 2, 3. | Evaluates the starred positional expression before keyword values in this form, recording 1, 3, 2. | Divergence |
 | Multiple unpackings in calls | Allows any number of `*` and `**` entries. Ordinary positional arguments may follow `*` but not named arguments or `**`. Named arguments may follow `*` or `**`; `*` may not follow `**`. Repeated explicit keyword names are static errors. | Supports the same layouts and rejects repeated explicit keyword names. Expansion and value rules differ as described below. | Same layouts |
-| Unpacking evaluation and validation | Finishes each entry before evaluating the next. Expands `*` through StarlarkX iteration and `**` through mapping key iteration and lookup. Checks key type and duplicate names before lookup, and rejects invalid keywords before invoking any callee. Releases each iterator before the next entry, including on errors. New argument containers share their element values with the inputs. | Duplicate keywords are rejected before invoking the callee. CPython 3.14.7 expansion and duplicate-error timing can depend on the number of unpackings and adjacent keyword groups. | Divergence |
+| Unpacking evaluation and validation | Finishes each entry before evaluating the next. Expands `*` through StarlarkX iteration and `**` through mapping key iteration and lookup. Checks key type and duplicate names before lookup, and rejects invalid keywords before invoking any callee. Closes each acquired cursor before the next entry, including on errors; borrowed language iterators remain resumable. New argument containers share their element values with the inputs. | Duplicate keywords are rejected before invoking the callee. CPython 3.14.7 expansion and duplicate-error timing can depend on the number of unpackings and adjacent keyword groups. | Divergence |
 | `int` signature | Requires `x`; accepts both `x` and optional `base` by position or name. `int(x="11", base=2)` returns `3`; `int()` is an error. | The first argument is positional-only, `base` accepts either form, and `int()` returns `0`. | Divergence |
 | `enumerate` keyword arguments | `enumerate(iterable, start=0)` accepts both parameters by position or name. Keeps the eager list result and StarlarkX iterable and integer checks. | Accepts the same call forms over Python values and returns an iterator. | Aligned call contract / value-model divergence |
 | String `split`/`rsplit` keyword arguments | Both accept `sep=None` and `maxsplit=-1` by position or name, retaining existing string and integer checks. | Accepts the same parameter names and call forms over Python text values. | Aligned call contract / value-model divergence |
 | String `replace` keyword argument | `replace(old, new, /, count=-1)` accepts `count` by position or name; `old` and `new` remain positional-only. Uses StarlarkX string and integer rules. | Supports the same call forms over Python text values. | Aligned call contract / value-model divergence |
 | String `splitlines` keyword argument | `splitlines(keepends=False)` accepts `keepends` by position or name. Requires an actual Boolean and splits only at newline bytes (`\n`). | Supports the same call forms, accepts integer values for `keepends`, and recognizes a broader set of line boundaries. | Aligned call contract / type and line-boundary divergence |
-| `map` strict option | Accepts keyword-only `strict=False`, requiring a Boolean. With `True`, rejects unequal lengths in source iteration order, keeping earlier callback effects but returning no partial list. Iterators are released on every exit. | Truth-tests `strict`. Uses the same mismatch-consumption order, but returns a lazy iterator, so earlier results may already have been yielded. | Aligned mismatch detection / typing and eager-result divergence |
-| `zip` strict option | Accepts keyword-only `strict=False`, requiring a Boolean. With `True`, rejects unequal lengths in source iteration order and returns no partial list. Iterators are released on every exit. | Truth-tests `strict`. Uses the same mismatch-consumption order, but returns a lazy iterator, so earlier results may already have been yielded. | Aligned mismatch detection / typing and eager-result divergence |
+| `map` strict option | Accepts keyword-only `strict=False`, requiring a Boolean. With `True`, rejects unequal lengths in source iteration order, keeping earlier callback effects but returning no partial list. Acquired cursors are closed on every exit without closing borrowed language iterators. | Truth-tests `strict`. Uses the same mismatch-consumption order, but returns a lazy iterator, so earlier results may already have been yielded. | Aligned mismatch detection / typing and eager-result divergence |
+| `zip` strict option | Accepts keyword-only `strict=False`, requiring a Boolean. With `True`, rejects unequal lengths in source iteration order and returns no partial list. Acquired cursors are closed on every exit without closing borrowed language iterators. | Truth-tests `strict`. Uses the same mismatch-consumption order, but returns a lazy iterator, so earlier results may already have been yielded. | Aligned mismatch detection / typing and eager-result divergence |
 | `sorted` signature | Accepts one positional iterable and named `key=None` and `reverse=False` options. `key=None` compares elements directly; other keys must be callable. `reverse` must be a bool. Both types are checked even for empty input. Uses StarlarkX comparisons and keeps the source iterator active through sorting, blocking source mutation. | Same argument layout and `None` default. Tests the truth of `reverse` rather than requiring a bool; an invalid key may go unnoticed for empty input. | Aligned argument layout / typing and mutation divergence |
 | `min`/`max` | Support Python's iterable and variadic forms, keyword-only `key=None`, and an iterable-only `default`. The first encountered item wins ties. Values still follow Starlark's iteration and comparison rules. | Support the same call forms and selection behavior over Python's value and iterator model. | Aligned call contract / value-model divergence |
 | `sum` | Supports `sum(iterable, /, start=0)`, with `start` accepted positionally or by name. String and bytes starts are rejected, an empty iterable returns `start` unchanged, and other values are combined from left to right using ordinary StarlarkX `+`. Booleans remain non-numeric and floats receive no compensated special case. | Supports the same call forms, empty behavior, and string/bytes rejection over Python values. CPython uses specialized integer, float, and complex paths, including compensated float and complex summation. | Aligned call contract / value-model and numeric-algorithm divergence |
@@ -395,7 +403,7 @@ already removed.
 | List and dictionary comprehensions | Eager list and dictionary comprehensions support nested `for` and `if` clauses. Their values and iteration follow StarlarkX rules. |
 | Set displays | With `Set` enabled, `{1, 2}` constructs a set directly, using StarlarkX equality, hashing, and insertion order. Elements are evaluated and inserted from left to right. `{}` constructs a dictionary. Python sets have unspecified iteration order. |
 | Set comprehensions | With `Set` enabled, `{x for x in items}` builds a set immediately. Loop variables stay local to the comprehension. Uses StarlarkX iteration, equality, hashing, insertion order, and mutation rules. Does not build an intermediate list or call the `set` name. Python has the same syntax but different set and value rules. |
-| Generator expressions | `(x for x in iterable)` is not supported. Python produces a lazy generator. |
+| Generator expressions | Lazy `(body for target in iterable if condition)` with nested clauses, a separate scope, and immediate acquisition of the outer iterator. Single-pass results follow StarlarkX cursor ownership and thread lifetime rules. |
 | Async comprehensions | Comprehensions using `async for` or `await` are not supported. Python supports them in asynchronous contexts. |
 | Loop clauses | As in Python, `else` on a `for` or `while` runs when the iterable runs out or the condition becomes false, even if the body never runs. It does not run when `break`, `return`, or an error exits the loop. Existing loop options still apply. |
 | Positional-only function parameters | `/` in function and lambda parameter lists makes preceding parameters positional-only, with Python's placement, default ordering, and binding rules. A same-named keyword goes into `**kwargs` if present; otherwise it is an error. |
@@ -425,15 +433,17 @@ already removed.
 - `import`, `from ... import`, relative/package import semantics, and
   `__future__` statements. Starlark's `load` is a different construct.
 - `global` and `nonlocal`.
-- `yield`, generator functions, and `yield from`.
+- Yield expressions, `yield from`, generator `send`/`throw`, and generator return
+  values. Statement-form `yield` and generator functions are supported.
 - `async def`, `await`, `async for`, and `async with`.
 - Structural pattern matching (`match`/`case`).
 - Python's `type` alias statement.
 - Variable, parameter, and return annotations.
 
 The scanner reserves `as`, `async`, `await`, `class`, `except`,
-`finally`, `from`, `global`, `import`, `is`, `nonlocal`, `raise`, `try`, `with`,
-and `yield` even though the parser has no constructs for them. This Go
+`finally`, `from`, `global`, `import`, `is`, `nonlocal`, `raise`, `try`, and `with`
+even though the parser has no constructs for them. `yield` is part of the
+generator-statement grammar. This Go
 implementation permits `assert` as an ordinary identifier. Python's newer soft
 keywords `match`, `case`, and `type` are also ordinary identifiers here.
 
@@ -445,8 +455,9 @@ keywords `match`, `case`, and `type` are also ordinary identifiers here.
   and starred assignment targets are tracked separately above.
 - Complex numbers, `Ellipsis`, and complex literals.
 - The matrix multiplication operator `@`.
-- User-visible iterator objects and `iter`/`next`; Starlark iteration is exposed
-  through `for`, comprehensions, and eager built-ins.
+- Python's callable/sentinel form of `iter`, class-based iterator special methods,
+  and exception-based exhaustion. StarlarkX exposes `iter`, `next`, and generators
+  using its own host interfaces and fatal-error policy.
 - User-defined classes and the Python object protocol (`__getattr__`,
   `__iter__`, `__enter__`, arithmetic special methods, descriptors, and so on).
 - Weak references, finalizers, explicit identity, introspection frames, code
@@ -461,14 +472,14 @@ StarlarkX currently provides these built-in names:
 ```text
 None True False
 abs all any ascii bin bool bytes callable chr dict dir divmod enumerate fail
-float filter format getattr hasattr hash hex int len list map max min oct ord pow print range
+float filter format getattr hasattr hash hex int iter len list map max min next oct ord pow print range
 repr reversed round set sorted str sum tuple type zip
 ```
 
 `fail` is a Starlark addition. The host may add, remove, or replace universal or
 predeclared names before evaluation.
 
-The following 30 functions and types from Python 3.14's
+The following 28 functions and types from Python 3.14's
 [Built-in Functions reference](https://docs.python.org/3.14/library/functions.html)
 are missing. Each has its own row in the decision register. This list does not
 include exception classes, constants, or the extra interactive helpers installed
@@ -500,10 +511,8 @@ expose its own APIs.
 | `input` | Reads a line from standard input, optionally printing a prompt. | Unsupported; input must come through the host. |
 | `isinstance` | Checks whether a value is an instance of a type or one of several types. | Still open for checking built-in and host-defined value types. It would not include Python classes or inheritance. |
 | `issubclass` | Checks whether a class inherits from another class. | Unsupported; classes and inheritance are not part of the language. |
-| `iter` | Gets an iterator, or repeatedly calls a function until it returns a sentinel value. | Needs language-visible iterators and rules for both call forms. |
 | `locals` | Returns names in the current local scope. | Depends on whether and how local variables can be inspected. |
 | `memoryview` | Provides a view of another object's buffer without copying it. | Needs buffer support and rules for shared data, writes, and freezing. |
-| `next` | Gets the next item from an iterator, optionally returning a default at the end. | Needs language-visible iterators and a rule for exhaustion without a default. |
 | `object` | Creates a basic object and serves as the base of Python's class hierarchy. | Unsupported; existing values and host objects do not need Python's base class. |
 | `open` | Opens a file or wraps a file descriptor. | Unsupported; file access belongs to host APIs. |
 | `property` | Defines an attribute through getter, setter, and deleter functions. | Unsupported; keep attributes supplied by host objects instead of class properties. |
@@ -513,9 +522,9 @@ expose its own APIs.
 | `super` | Looks up methods using a class's inheritance order. | Unsupported; classes and inheritance are not part of the language. |
 | `vars` | Returns an object's attribute dictionary, or local names when called without an argument. | Needs decisions on attribute dictionaries and local-scope inspection. |
 
-We want functions to be able to return iterators eventually, but that design is
-still open. For now, `map` and `filter` return lists immediately.
-Adding iterator support later will not automatically change these return types.
+Functions can return iterators and generators. Existing `map`, `filter`,
+`zip`, and `enumerate` results remain eager lists; generator support does not
+change those return types.
 
 Built-in type methods are also a subset rather than a compatibility layer:
 

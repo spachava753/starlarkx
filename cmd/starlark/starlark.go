@@ -91,6 +91,7 @@ func doMain() int {
 	}
 
 	thread := &starlark.Thread{Load: repl.MakeLoad()}
+	defer thread.Close()
 	globals := make(starlark.StringDict)
 
 	// Ideally this statement would update the predeclared environment.

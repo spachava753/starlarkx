@@ -2,14 +2,21 @@ package starlark
 
 import "fmt"
 
-func extendCallArgs(args *List, value Value) error {
+func extendCallArgs(thread *Thread, args *List, value Value) error {
 	iter := Iterate(value)
 	if iter == nil {
 		return fmt.Errorf("argument after * must be iterable, not %s", value.Type())
 	}
-	defer iter.Done()
+	defer iter.Close()
 	var item Value
-	for iter.Next(&item) {
+	for {
+		ok, err := iter.Next(thread, &item)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
 		args.elems = append(args.elems, item)
 	}
 	return nil
@@ -29,15 +36,22 @@ func checkCallKeyword(kwargs *Dict, key Value) error {
 	return nil
 }
 
-func mergeCallKeywords(kwargs *Dict, value Value) error {
+func mergeCallKeywords(thread *Thread, kwargs *Dict, value Value) error {
 	mapping, ok := value.(IterableMapping)
 	if !ok {
 		return fmt.Errorf("argument after ** must be a mapping, not %s", value.Type())
 	}
 	iter := mapping.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var key Value
-	for iter.Next(&key) {
+	for {
+		ok, err := iter.Next(thread, &key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
 		if err := checkCallKeyword(kwargs, key); err != nil {
 			return err
 		}
@@ -48,7 +62,7 @@ func mergeCallKeywords(kwargs *Dict, value Value) error {
 		if !found {
 			return fmt.Errorf("mapping has no value for key %s", key)
 		}
-		if err := kwargs.SetKey(key, value); err != nil {
+		if err := kwargs.SetKey(thread, key, value); err != nil {
 			return err
 		}
 	}

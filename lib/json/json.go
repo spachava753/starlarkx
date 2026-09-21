@@ -180,7 +180,7 @@ func encode(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, k
 				quote(k)
 				buf.WriteByte(':')
 				if err := emit(item[1]); err != nil {
-					return fmt.Errorf("in %s key %s: %v", x.Type(), item[0], err)
+					return fmt.Errorf("in %s key %s: %w", x.Type(), item[0], err)
 				}
 			}
 			buf.WriteByte('}')
@@ -189,14 +189,21 @@ func encode(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, k
 			// e.g. tuple, list
 			buf.WriteByte('[')
 			iter := x.Iterate()
-			defer iter.Done()
+			defer iter.Close()
 			var elem starlark.Value
-			for i := 0; iter.Next(&elem); i++ {
+			for i := 0; ; i++ {
+				ok, err := iter.Next(thread, &elem)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					break
+				}
 				if i > 0 {
 					buf.WriteByte(',')
 				}
 				if err := emit(elem); err != nil {
-					return fmt.Errorf("at %s index %d: %v", x.Type(), i, err)
+					return fmt.Errorf("at %s index %d: %w", x.Type(), i, err)
 				}
 			}
 			buf.WriteByte(']')
@@ -223,7 +230,7 @@ func encode(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, k
 				quote(name)
 				buf.WriteByte(':')
 				if err := emit(v); err != nil {
-					return fmt.Errorf("in field .%s: %v", name, err)
+					return fmt.Errorf("in field .%s: %w", name, err)
 				}
 			}
 			buf.WriteByte('}')
@@ -235,7 +242,7 @@ func encode(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, k
 	}
 
 	if err := emit(x); err != nil {
-		return nil, fmt.Errorf("%s: %v", b.Name(), err)
+		return nil, fmt.Errorf("%s: %w", b.Name(), err)
 	}
 	return starlark.String(buf.String()), nil
 }
@@ -467,7 +474,7 @@ func decode(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, k
 					}
 					i++ // ':'
 					value := parse()
-					dict.SetKey(key, value) // can't fail
+					dict.SetKey(thread, key, value) // can't fail
 					b = next()
 					if b != ',' {
 						if b != '}' {

@@ -4,7 +4,7 @@ import "fmt"
 
 func setDictUnique(dict *Dict, key, value Value) error {
 	before := dict.Len()
-	if err := dict.SetKey(key, value); err != nil {
+	if err := dict.SetKey(nil, key, value); err != nil {
 		return err
 	}
 	if dict.Len() == before {
@@ -13,24 +13,31 @@ func setDictUnique(dict *Dict, key, value Value) error {
 	return nil
 }
 
-func extendSetDisplay(set *Set, value Value) error {
+func extendSetDisplay(thread *Thread, set *Set, value Value) error {
 	iter := Iterate(value)
 	if iter == nil {
 		return fmt.Errorf("got %s, want iterable in set display", value.Type())
 	}
-	defer iter.Done()
-	return set.InsertAll(iter)
+	defer iter.Close()
+	return set.InsertAll(thread, iter)
 }
 
-func mergeDictDisplay(dict *Dict, value Value) error {
+func mergeDictDisplay(thread *Thread, dict *Dict, value Value) error {
 	mapping, ok := value.(IterableMapping)
 	if !ok {
 		return fmt.Errorf("got %s after **, want iterable mapping", value.Type())
 	}
 	iter := mapping.Iterate()
-	defer iter.Done()
+	defer iter.Close()
 	var key Value
-	for iter.Next(&key) {
+	for {
+		ok, err := iter.Next(thread, &key)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
 		value, found, err := mapping.Get(key)
 		if err != nil {
 			return err

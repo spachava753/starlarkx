@@ -23,7 +23,7 @@ Suite = [newline indent {Statement} outdent] | SimpleStmt .
 SimpleStmt = SmallStmt {';' SmallStmt} [';'] '\n' .
 # NOTE: '\n' optional at EOF
 
-SmallStmt = ReturnStmt
+SmallStmt = ReturnStmt | YieldStmt
           | BreakStmt | ContinueStmt | PassStmt
           | AssignStmt | DelStmt
           | ExprStmt
@@ -31,6 +31,7 @@ SmallStmt = ReturnStmt
           .
 
 ReturnStmt   = 'return' [Expression] .
+YieldStmt    = 'yield' [Expression] .
 BreakStmt    = 'break' .
 ContinueStmt = 'continue' .
 PassStmt     = 'pass' .
@@ -68,14 +69,14 @@ PrimaryExpr = Operand
 
 Operand = identifier
         | int | float | string | bytes | fstring
-        | ListExpr | ListComp
+        | ListExpr | ListComp | GeneratorExpr
         | DictExpr | DictComp | SetExpr | SetComp
         | '(' [DisplayEntries [',']] ')'
         | ('-' | '+') PrimaryExpr
         .
 
 DotSuffix   = '.' (identifier | 'load') .
-CallSuffix  = '(' [Arguments [',']] ')' .
+CallSuffix = '(' ([Arguments [',']] | GeneratorBody) ')' .
 SliceSuffix = '[' [Expression] [':' Test [':' Test]] ']' .
 
 Arguments = Argument {',' Argument} .
@@ -85,6 +86,8 @@ ListExpr = '[' [DisplayEntries [',']] ']' .
 DisplayEntries = DisplayEntry {',' DisplayEntry} .
 DisplayEntry = Test | '*' Test .
 ListComp = '[' Test {CompClause} ']'.
+GeneratorBody = Test 'for' LoopVariables 'in' Test {CompClause} .
+GeneratorExpr = '(' GeneratorBody ')' .
 
 DictExpr = '{' [Entries [',']] '}' .
 DictComp = '{' Test ':' Test {CompClause} '}' .

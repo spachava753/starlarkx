@@ -5,6 +5,7 @@
 package starlark
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,13 +24,20 @@ import (
 
 // A Thread contains the state of a Starlark thread,
 // such as its call stack and thread-local storage.
-// The Thread is threaded throughout the evaluator.
+// Reuse the same Thread across evaluations that share unfinished iterators,
+// and call Close after the last evaluation to release them. Except for Cancel
+// and Uncancel, a Thread must not be used concurrently by multiple goroutines.
 type Thread struct {
 	// Name is an optional name that describes the thread, for debugging.
 	Name string
 
 	// stack is the stack of (internal) call frames.
 	stack []*frame
+
+	// iterators retains unfinished language iterators in creation order.
+	iterators      map[*iteratorValue]uint64
+	nextIteratorID uint64
+	closed         bool
 
 	// Print is the client-supplied implementation of the Starlark
 	// 'print' function. The text includes the separator and terminator.
@@ -196,6 +204,8 @@ func (fr *frame) Position() syntax.Position {
 	case *Function:
 		// Starlark function
 		return c.funcode.Position(fr.pc)
+	case *generatorCursor:
+		return c.fn.funcode.Position(fr.pc)
 	case callableWithPosition:
 		// If a built-in Callable defines
 		// a Position method, use it.
@@ -616,16 +626,24 @@ func makeExprFunc(opts *syntax.FileOptions, expr syntax.Expr, env StringDict) (*
 // The following functions are primitive operations of the byte code interpreter.
 
 // list += iterable
-func listExtend(x *List, y Iterable) {
+func listExtend(thread *Thread, x *List, y Iterable) error {
 	if ylist, ok := y.(*List); ok {
-		// fast path: list += list
 		x.elems = append(x.elems, ylist.elems...)
-	} else {
-		iter := y.Iterate()
-		defer iter.Done()
-		var z Value
-		for iter.Next(&z) {
-			x.elems = append(x.elems, z)
+		return nil
+	}
+	iter := y.Iterate()
+	defer iter.Close()
+	var z Value
+	for {
+		ok, err := iter.Next(thread, &z)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+		if err := x.Append(z); err != nil {
+			return err
 		}
 	}
 }
@@ -660,9 +678,9 @@ func getAttr(x Value, name string) (Value, error) {
 }
 
 // setField implements x.name = y.
-func setField(x Value, name string, y Value) error {
+func setField(thread *Thread, x Value, name string, y Value) error {
 	if x, ok := x.(HasSetField); ok {
-		err := x.SetField(name, y)
+		err := x.SetField(thread, name, y)
 		if is[NoSuchAttrError](err) {
 			// No such field: check spelling.
 			if n := spell.Nearest(name, x.AttrNames()); n != "" {
@@ -716,7 +734,7 @@ func outOfRange(i, n int, x Value) error {
 
 // setSlice implements plain list slice assignment. No host slice-mutation
 // protocol is implied by the read-only Sliceable interface.
-func setSlice(x, lo, hi, stepValue, rhs Value) error {
+func setSlice(thread *Thread, x, lo, hi, stepValue, rhs Value) error {
 	list, ok := x.(*List)
 	if !ok {
 		return fmt.Errorf("%s value does not support slice assignment", x.Type())
@@ -731,7 +749,7 @@ func setSlice(x, lo, hi, stepValue, rhs Value) error {
 	}
 
 	// Lock while invoking host iterators; snapshotting also makes self-assignment safe.
-	replacement, err := sliceReplacement(list, rhs)
+	replacement, err := sliceReplacement(thread, list, rhs)
 	if err != nil {
 		return err
 	}
@@ -819,17 +837,24 @@ func boundedSliceInt(value Value, limit int) (int, error) {
 	return int(min(max(i, -int64(limit)), int64(limit))), nil
 }
 
-func sliceReplacement(dst *List, rhs Value) ([]Value, error) {
+func sliceReplacement(thread *Thread, dst *List, rhs Value) ([]Value, error) {
 	dst.itercount++
 	defer func() { dst.itercount-- }()
 	iter := Iterate(rhs)
 	if iter == nil {
 		return nil, fmt.Errorf("slice assignment requires an iterable, got %s", rhs.Type())
 	}
-	defer iter.Done()
+	defer iter.Close()
 	var elems []Value
 	var value Value
-	for iter.Next(&value) {
+	for {
+		ok, err := iter.Next(thread, &value)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
 		if len(elems) >= maxAlloc {
 			return nil, fmt.Errorf("excessive slice assignment")
 		}
@@ -839,10 +864,10 @@ func sliceReplacement(dst *List, rhs Value) ([]Value, error) {
 }
 
 // setIndex implements x[y] = z.
-func setIndex(x, y, z Value) error {
+func setIndex(thread *Thread, x, y, z Value) error {
 	switch x := x.(type) {
 	case HasSetKey:
-		if err := x.SetKey(y, z); err != nil {
+		if err := x.SetKey(thread, y, z); err != nil {
 			return err
 		}
 
@@ -859,7 +884,7 @@ func setIndex(x, y, z Value) error {
 		if i < 0 || i >= n {
 			return outOfRange(origI, n, x)
 		}
-		return x.SetIndex(i, z)
+		return x.SetIndex(thread, i, z)
 
 	default:
 		return fmt.Errorf("%s value does not support item assignment", x.Type())
@@ -888,7 +913,7 @@ func Unary(op syntax.Token, x Value) (Value, error) {
 
 // Binary applies a strict binary operator (not AND or OR) to its operands.
 // For equality tests or ordered comparisons, use Compare instead.
-func Binary(op syntax.Token, x, y Value) (Value, error) {
+func Binary(thread *Thread, op syntax.Token, x, y Value) (Value, error) {
 	switch op {
 	case syntax.PLUS:
 		switch x := x.(type) {
@@ -961,8 +986,8 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 		case *Set: // difference
 			if y, ok := y.(*Set); ok {
 				iter := y.Iterate()
-				defer iter.Done()
-				return x.Difference(iter)
+				defer iter.Close()
+				return x.Difference(nil, iter)
 			}
 		}
 
@@ -1146,7 +1171,7 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 		}
 
 	case syntax.NOT_IN:
-		z, err := Binary(syntax.IN, x, y)
+		z, err := Binary(thread, syntax.IN, x, y)
 		if err != nil {
 			return nil, err
 		}
@@ -1154,6 +1179,25 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 
 	case syntax.IN:
 		switch y := y.(type) {
+		case *iteratorValue:
+			var value Value
+			for {
+				ok, err := y.advance(thread, &value)
+				if err != nil {
+					return nil, err
+				}
+				if !ok {
+					return False, nil
+				}
+				equal, err := Equal(value, x)
+				if err != nil {
+					return nil, err
+				}
+				if equal {
+					return True, nil
+				}
+			}
+
 		case Container: // List, Tuple, Set, String, Bytes, rangeValue etc.
 			found, err := y.Has(x)
 			return Bool(found), err
@@ -1179,8 +1223,8 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 		case *Set: // union
 			if y, ok := y.(*Set); ok {
 				iter := Iterate(y)
-				defer iter.Done()
-				return x.Union(iter)
+				defer iter.Close()
+				return x.Union(nil, iter)
 			}
 		}
 
@@ -1193,8 +1237,8 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 		case *Set: // intersection
 			if y, ok := y.(*Set); ok {
 				iter := y.Iterate()
-				defer iter.Done()
-				return x.Intersection(iter)
+				defer iter.Close()
+				return x.Intersection(nil, iter)
 			}
 		}
 
@@ -1207,8 +1251,8 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 		case *Set: // symmetric difference
 			if y, ok := y.(*Set); ok {
 				iter := y.Iterate()
-				defer iter.Done()
-				return x.SymmetricDifference(iter)
+				defer iter.Close()
+				return x.SymmetricDifference(thread, iter)
 			}
 		}
 
@@ -1314,6 +1358,12 @@ func stringRepeat(s String, n Int) (String, error) {
 
 // Call calls the function fn with the specified positional and keyword arguments.
 func Call(thread *Thread, fn Value, args Tuple, kwargs []Tuple) (Value, error) {
+	if thread == nil {
+		return nil, fmt.Errorf("calling a function requires a thread")
+	}
+	if thread.closed {
+		return nil, fmt.Errorf("thread is closed")
+	}
 	c, ok := fn.(Callable)
 	if !ok {
 		return nil, fmt.Errorf("invalid call of non-function (%s)", fn.Type())
@@ -1366,7 +1416,13 @@ func Call(thread *Thread, fn Value, args Tuple, kwargs []Tuple) (Value, error) {
 
 	// Always return an EvalError with an accurate frame.
 	if err != nil && !is[*EvalError](err) {
-		err = thread.evalError(err)
+		wrapped := thread.evalError(err)
+		var nested *EvalError
+		if errors.As(err, &nested) {
+			// A host consumer may add context after a generator frame unwinds.
+			wrapped.CallStack = nested.CallStack
+		}
+		err = wrapped
 	}
 
 	return result, err
@@ -1585,7 +1641,7 @@ func setArgs(locals []Value, fn *Function, args Tuple, kwargs []Tuple) error {
 			return fmt.Errorf("function %s got an unexpected keyword argument %s", fn.Name(), k)
 		}
 		oldlen := kwdict.Len()
-		kwdict.SetKey(k, v)
+		kwdict.SetKey(nil, k, v)
 		if kwdict.Len() == oldlen {
 			return fmt.Errorf("function %s got multiple values for parameter %s", fn.Name(), k)
 		}
